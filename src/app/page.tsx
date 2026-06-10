@@ -35,8 +35,23 @@ type CrewCall = {
     address: string | null;
     scheduledAt: string;
   } | null;
+  booking?: {
+    bookingDate?: string | null;
+    bookingTime?: string | null;
+    address?: string | null;
+    detailAddress?: string | null;
+    pickupLat?: number | null;
+    pickupLng?: number | null;
+  } | null;
   tracking?: {
     message: string;
+    driverLocation?: {
+      lat: number;
+      lng: number;
+      heading: number;
+      speed: number;
+      updatedAt?: string;
+    } | null;
   };
 };
 
@@ -60,6 +75,26 @@ async function crewRequest<T>(path: string, options?: RequestInit): Promise<T> {
   }
 
   return response.json() as Promise<T>;
+}
+
+async function updateCrewLocation(
+  pickupRequestId: number,
+  payload: {
+    lat: number;
+    lng: number;
+    heading?: number;
+    speed?: number;
+  },
+) {
+  return crewRequest<CrewCall>(`/api/crew/pickups/${pickupRequestId}/location`, {
+    method: "POST",
+    body: JSON.stringify({
+      lat: payload.lat,
+      lng: payload.lng,
+      heading: payload.heading ?? 0,
+      speed: payload.speed ?? 0,
+    }),
+  });
 }
 
 export default function CrewAppPage() {
@@ -249,6 +284,13 @@ function CrewDashboard({ onLogout }: { onLogout: () => void }) {
 
   const selectedCall = activeCall ?? calls[0] ?? null;
   const pickupRequestId = selectedCall?.pickupRequest?.pickupRequestId;
+  const locationTrackingEnabled = useMemo(
+    () =>
+      ["ASSIGNED", "IN_PROGRESS", "ARRIVED"].includes(
+        selectedCall?.pickupRequest?.status ?? "",
+      ),
+    [selectedCall?.pickupRequest?.status],
+  );
 
   const loadCalls = async () => {
     setLoading(true);
@@ -266,6 +308,93 @@ function CrewDashboard({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     void loadCalls();
   }, []);
+
+  useEffect(() => {
+    if (!pickupRequestId || !locationTrackingEnabled) {
+      return undefined;
+    }
+
+    const applyLocationUpdate = async (payload: {
+      lat: number;
+      lng: number;
+      heading?: number;
+      speed?: number;
+    }) => {
+      try {
+        const updated = await updateCrewLocation(pickupRequestId, payload);
+        setActiveCall(updated);
+        setCalls((current) =>
+          current.map((call) => (call.id === updated.id ? updated : call)),
+        );
+        setMessage("크루 위치를 고객 추적 화면으로 전송 중입니다.");
+      } catch {
+        setMessage("위치 전송 중 오류가 발생했습니다.");
+      }
+    };
+
+    if ("geolocation" in navigator) {
+      let lastSentAt = 0;
+      const watchId = navigator.geolocation.watchPosition(
+        (position) => {
+          const now = Date.now();
+          if (now - lastSentAt < 4000) {
+            return;
+          }
+
+          lastSentAt = now;
+          void applyLocationUpdate({
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            heading: position.coords.heading ?? 0,
+            speed: position.coords.speed ?? 0,
+          });
+        },
+        () => {
+          setMessage("위치 권한이 없어 데모 경로로 위치를 전송합니다.");
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 3000,
+          timeout: 10000,
+        },
+      );
+
+      return () => {
+        navigator.geolocation.clearWatch(watchId);
+      };
+    }
+
+    const targetLat = selectedCall?.booking?.pickupLat ?? 28.6197;
+    const targetLng = selectedCall?.booking?.pickupLng ?? 77.2196;
+    const startLat = selectedCall?.tracking?.driverLocation?.lat ?? targetLat - 0.012;
+    const startLng = selectedCall?.tracking?.driverLocation?.lng ?? targetLng + 0.01;
+    let step = 0;
+
+    const timer = window.setInterval(() => {
+      step += 1;
+      const ratio = Math.min(step / 8, 1);
+      const lat = startLat + (targetLat - startLat) * ratio;
+      const lng = startLng + (targetLng - startLng) * ratio;
+
+      void applyLocationUpdate({
+        lat: Number(lat.toFixed(6)),
+        lng: Number(lng.toFixed(6)),
+        heading: 90,
+        speed: Math.max(4, 18 - step),
+      });
+    }, 5000);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [
+    locationTrackingEnabled,
+    pickupRequestId,
+    selectedCall?.booking?.pickupLat,
+    selectedCall?.booking?.pickupLng,
+    selectedCall?.tracking?.driverLocation?.lat,
+    selectedCall?.tracking?.driverLocation?.lng,
+  ]);
 
   const runPickupAction = async (action: "accept" | "depart" | "arrive" | "complete") => {
     if (!pickupRequestId) {
@@ -294,6 +423,7 @@ function CrewDashboard({ onLogout }: { onLogout: () => void }) {
             : undefined,
       });
       setActiveCall(data);
+      setCalls((current) => current.map((call) => (call.id === data.id ? data : call)));
       setMessage(actionMessage(action));
     } catch {
       setMessage("처리 중 문제가 발생했어요.");
