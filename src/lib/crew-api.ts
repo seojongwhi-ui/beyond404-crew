@@ -98,10 +98,20 @@ export type CrewCall = {
   } | null;
 };
 
+function trimTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
 function resolveApiBaseUrl() {
-  if (typeof window === "undefined") {
-    return process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8080";
+  const publicBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (publicBaseUrl) {
+    return trimTrailingSlash(publicBaseUrl);
   }
+
+  if (typeof window === "undefined") {
+    return "http://127.0.0.1:8080";
+  }
+
   return "";
 }
 
@@ -117,7 +127,8 @@ async function crewRequest<T>(path: string, options?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Crew API request failed: ${response.status}`);
+    const body = await response.text().catch(() => "");
+    throw new Error(body || `Crew API request failed: ${response.status}`);
   }
 
   return response.json() as Promise<T>;
@@ -181,6 +192,7 @@ export function updateCrewLocation(
 export function applianceName(call: CrewCall) {
   const model = call.appliance?.modelName ?? "LG demo model";
   const type = call.appliance?.applianceType ?? "washing_machine";
+
   const label =
     type === "refrigerator"
       ? "냉장고"
@@ -191,12 +203,14 @@ export function applianceName(call: CrewCall) {
           : type === "microwave"
             ? "전자레인지"
             : "세탁기";
+
   return `${label} / ${model}`;
 }
 
 export function formatRequestTime(requestedAt?: string | null, scheduledAt?: string | null) {
   const source = requestedAt ?? scheduledAt;
   if (!source) return "-";
+
   const parsed = new Date(source);
   if (Number.isNaN(parsed.getTime())) return source;
 

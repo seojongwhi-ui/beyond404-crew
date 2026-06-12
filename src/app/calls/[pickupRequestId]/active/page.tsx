@@ -16,6 +16,13 @@ import { ArrowLeft, Home, MapPin, Truck, Warehouse } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
+type LocationPayload = {
+  lat: number;
+  lng: number;
+  heading?: number;
+  speed?: number;
+};
+
 export default function CrewActiveCallPage() {
   const router = useRouter();
   const params = useParams<{ pickupRequestId: string }>();
@@ -60,16 +67,25 @@ export default function CrewActiveCallPage() {
       return undefined;
     }
 
-    const sendLocation = async (payload: { lat: number; lng: number; heading?: number; speed?: number }) => {
+    let fallbackCleanup: (() => void) | undefined;
+    let stopped = false;
+    let lastSentAt = 0;
+
+    const sendLocation = async (payload: LocationPayload) => {
       try {
         const updated = await updateCrewLocation(pickupRequestId, payload);
-        setCall(updated);
+        if (!stopped) {
+          setCall(updated);
+          setMessage("크루 위치를 사용자 앱에 실시간으로 공유 중입니다.");
+        }
       } catch {
-        setMessage("크루 위치 전송 중 문제가 발생했습니다.");
+        if (!stopped) {
+          setMessage("크루 위치 전송 중 문제가 발생했습니다.");
+        }
       }
     };
 
-    const startFallbackSimulation = () => {
+    const buildFallbackStep = () => {
       const pickupLat = call?.booking?.pickupLat ?? 37.5665;
       const pickupLng = call?.booking?.pickupLng ?? 126.978;
       const processingCenterLat = call?.tracking?.processingCenter?.lat ?? pickupLat + 0.014;
@@ -79,34 +95,43 @@ export default function CrewActiveCallPage() {
       const targetLng = headingToHub ? processingCenterLng : pickupLng;
       const startLat = call?.tracking?.driverLocation?.lat ?? targetLat - 0.01;
       const startLng = call?.tracking?.driverLocation?.lng ?? targetLng + 0.01;
+      return { headingToHub, startLat, startLng, targetLat, targetLng };
+    };
+
+    const startFallbackSimulation = () => {
+      const { headingToHub, startLat, startLng, targetLat, targetLng } = buildFallbackStep();
       let step = 0;
 
-      const timer = window.setInterval(() => {
+      const sendStep = async () => {
         step += 1;
-        const ratio = Math.min(step / 8, 1);
+        const ratio = Math.min(step / 10, 1);
         const lat = startLat + (targetLat - startLat) * ratio;
         const lng = startLng + (targetLng - startLng) * ratio;
-
-        void sendLocation({
+        await sendLocation({
           lat: Number(lat.toFixed(6)),
           lng: Number(lng.toFixed(6)),
           heading: headingToHub ? 135 : 90,
           speed: Math.max(4, 18 - step),
         });
-      }, 5000);
+      };
+
+      void sendStep();
+      const timer = window.setInterval(() => {
+        void sendStep();
+      }, 3000);
 
       return () => window.clearInterval(timer);
     };
 
     if ("geolocation" in navigator && window.isSecureContext) {
-      let lastSentAt = 0;
       const watchId = navigator.geolocation.watchPosition(
         (position) => {
           const now = Date.now();
-          if (now - lastSentAt < 4000) {
+          if (now - lastSentAt < 3000) {
             return;
           }
           lastSentAt = now;
+
           void sendLocation({
             lat: position.coords.latitude,
             lng: position.coords.longitude,
@@ -115,7 +140,10 @@ export default function CrewActiveCallPage() {
           });
         },
         () => {
-          setMessage("위치 권한을 받지 못해 시뮬레이션 위치를 전송합니다.");
+          if (!fallbackCleanup) {
+            setMessage("위치 권한을 받지 못해 시뮬레이션 위치를 전송합니다.");
+            fallbackCleanup = startFallbackSimulation();
+          }
         },
         {
           enableHighAccuracy: true,
@@ -124,11 +152,20 @@ export default function CrewActiveCallPage() {
         },
       );
 
-      return () => navigator.geolocation.clearWatch(watchId);
+      return () => {
+        stopped = true;
+        navigator.geolocation.clearWatch(watchId);
+        fallbackCleanup?.();
+      };
     }
 
-    const cleanup = startFallbackSimulation();
-    return () => cleanup();
+    setMessage("이 기기에서는 GPS를 사용할 수 없어 시뮬레이션 위치를 전송합니다.");
+    fallbackCleanup = startFallbackSimulation();
+
+    return () => {
+      stopped = true;
+      fallbackCleanup?.();
+    };
   }, [
     call?.booking?.pickupLat,
     call?.booking?.pickupLng,
@@ -199,10 +236,7 @@ export default function CrewActiveCallPage() {
         <section className="mt-4 grid grid-cols-2 gap-2">
           <InfoTile label="현재 상태" value={statusLabel(status)} />
           <InfoTile label="수거지까지" value={formatDistance(call?.tracking?.metrics?.crewToPickupMeters)} />
-          <InfoTile
-            label="허브까지"
-            value={formatDistance(call?.tracking?.metrics?.crewToProcessingCenterMeters)}
-          />
+          <InfoTile label="허브까지" value={formatDistance(call?.tracking?.metrics?.crewToProcessingCenterMeters)} />
           <InfoTile label="처리 허브" value={call?.tracking?.processingCenter?.label ?? "허브 정보 없음"} />
         </section>
 
