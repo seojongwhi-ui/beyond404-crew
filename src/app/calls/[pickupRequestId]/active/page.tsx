@@ -12,7 +12,7 @@ import {
   updateCrewLocation,
   type CrewCall,
 } from "@/lib/crew-api";
-import { ArrowLeft, Home, MapPin, Truck, Warehouse } from "lucide-react";
+import { ArrowLeft, Home, MapPin, Navigation, Truck, Warehouse } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
@@ -22,6 +22,56 @@ type LocationPayload = {
   heading?: number;
   speed?: number;
 };
+
+type Coordinates = {
+  lat: number;
+  lng: number;
+};
+
+function formatDateTime(value?: string | null) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat("ko-KR", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(parsed);
+}
+
+function formatCoordinates(location?: Coordinates | null) {
+  if (!location) return "-";
+  return `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`;
+}
+
+function buildGoogleMapEmbedUrl({
+  center,
+  routeFrom,
+  routeTo,
+}: {
+  center: Coordinates;
+  routeFrom?: Coordinates | null;
+  routeTo?: Coordinates | null;
+}) {
+  const params = new URLSearchParams();
+
+  if (routeFrom && routeTo) {
+    params.set("f", "d");
+    params.set("source", "s_d");
+    params.set("saddr", `${routeFrom.lat},${routeFrom.lng}`);
+    params.set("daddr", `${routeTo.lat},${routeTo.lng}`);
+    params.set("z", "15");
+  } else {
+    params.set("q", `${center.lat},${center.lng}`);
+    params.set("z", "16");
+  }
+
+  params.set("hl", "ko");
+  params.set("output", "embed");
+  return `https://maps.google.com/maps?${params.toString()}`;
+}
 
 export default function CrewActiveCallPage() {
   const router = useRouter();
@@ -57,10 +107,7 @@ export default function CrewActiveCallPage() {
   }, [pickupRequestId]);
 
   const status = call?.pickupRequest?.status ?? "";
-  const locationTrackingEnabled = useMemo(
-    () => ["ASSIGNED", "IN_PROGRESS", "ARRIVED"].includes(status),
-    [status],
-  );
+  const locationTrackingEnabled = useMemo(() => ["ASSIGNED", "IN_PROGRESS", "ARRIVED"].includes(status), [status]);
 
   useEffect(() => {
     if (!locationTrackingEnabled) {
@@ -159,7 +206,7 @@ export default function CrewActiveCallPage() {
       };
     }
 
-    setMessage("이 기기에서는 GPS를 사용할 수 없어 시뮬레이션 위치를 전송합니다.");
+    setMessage("이 기기에서 GPS를 사용할 수 없어 시뮬레이션 위치를 전송합니다.");
     fallbackCleanup = startFallbackSimulation();
 
     return () => {
@@ -204,9 +251,30 @@ export default function CrewActiveCallPage() {
     }
   };
 
+  const crewLocation = call?.tracking?.driverLocation
+    ? {
+        lat: call.tracking.driverLocation.lat,
+        lng: call.tracking.driverLocation.lng,
+      }
+    : null;
+  const pickupLocation =
+    call?.booking?.pickupLat != null && call?.booking?.pickupLng != null
+      ? { lat: call.booking.pickupLat, lng: call.booking.pickupLng }
+      : null;
+  const hubLocation = call?.tracking?.processingCenter
+    ? { lat: call.tracking.processingCenter.lat, lng: call.tracking.processingCenter.lng }
+    : null;
+  const routeTarget = status === "ARRIVED" || status === "COMPLETED" ? hubLocation ?? pickupLocation : pickupLocation;
+  const mapCenter = routeTarget ?? crewLocation ?? { lat: 37.5665, lng: 126.978 };
+  const mapUrl = buildGoogleMapEmbedUrl({
+    center: mapCenter,
+    routeFrom: crewLocation,
+    routeTo: routeTarget,
+  });
+
   return (
     <CrewPhoneShell>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 pb-5">
+      <div className="flex min-h-0 flex-1 flex-col overflow-auto px-5 pb-5">
         <header className="flex items-start justify-between">
           <button
             className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-ink"
@@ -233,11 +301,41 @@ export default function CrewActiveCallPage() {
           </p>
         </section>
 
+        <section className="mt-4 overflow-hidden rounded-[20px] border border-slate-200 bg-white">
+          <iframe
+            className="h-[260px] w-full border-0"
+            loading="lazy"
+            referrerPolicy="no-referrer-when-downgrade"
+            src={mapUrl}
+            title="crew-live-map"
+          />
+          <div className="grid grid-cols-1 gap-2 border-t border-slate-200 bg-white p-4">
+            <InfoTile label="크루 현재 좌표" value={formatCoordinates(crewLocation)} />
+            <InfoTile label="수거지 좌표" value={formatCoordinates(pickupLocation)} />
+            <InfoTile label="허브 좌표" value={formatCoordinates(hubLocation)} />
+          </div>
+        </section>
+
         <section className="mt-4 grid grid-cols-2 gap-2">
           <InfoTile label="현재 상태" value={statusLabel(status)} />
           <InfoTile label="수거지까지" value={formatDistance(call?.tracking?.metrics?.crewToPickupMeters)} />
           <InfoTile label="허브까지" value={formatDistance(call?.tracking?.metrics?.crewToProcessingCenterMeters)} />
-          <InfoTile label="처리 허브" value={call?.tracking?.processingCenter?.label ?? "허브 정보 없음"} />
+          <InfoTile label="좌표 갱신 시각" value={formatDateTime(call?.tracking?.driverLocation?.updatedAt)} />
+        </section>
+
+        <section className="mt-4 rounded-[18px] border border-slate-200 bg-white p-4">
+          <div className="flex items-center gap-2 text-sm font-black text-black">
+            <Navigation size={16} />
+            위치 기준 정보
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-2">
+            <InfoTile label="수거 위치" value={call?.pickupRequest?.address ?? "-"} />
+            <InfoTile label="처리 허브" value={call?.tracking?.processingCenter?.label ?? "-"} />
+            <InfoTile
+              label="크루 이동 상태"
+              value={call?.tracking?.metrics?.locationLive ? "실시간 GPS 반영 중" : "위치 확인 중"}
+            />
+          </div>
         </section>
 
         <section className="mt-4 rounded-[18px] border border-slate-200 bg-white p-4">
@@ -271,7 +369,7 @@ export default function CrewActiveCallPage() {
                   ? "문앞 도착 단계 반영"
                   : status === "COMPLETED"
                     ? "e-waste 공장 전달 완료"
-                    : "실시간 이동 공유"}
+                    : "실시간 위치 공유"}
               </p>
             </div>
           </div>
@@ -326,7 +424,7 @@ function InfoTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[12px] bg-slate-50 p-3">
       <p className="text-[11px] font-bold text-slate-500">{label}</p>
-      <p className="mt-1 text-sm font-black text-black">{value}</p>
+      <p className="mt-1 text-sm font-black leading-6 text-black">{value}</p>
     </div>
   );
 }
