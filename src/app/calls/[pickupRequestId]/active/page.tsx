@@ -2,8 +2,8 @@
 
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import {
-  arriveCrewCall,
   applianceName,
+  arriveCrewCall,
   completeCrewCall,
   departCrewCall,
   fetchCrewCallDetail,
@@ -54,11 +54,6 @@ function formatDateTime(value?: string | null) {
   }).format(parsed);
 }
 
-function formatCoordinates(location?: Coordinates | null) {
-  if (!location) return "-";
-  return `${location.lat.toFixed(5)}, ${location.lng.toFixed(5)}`;
-}
-
 export default function CrewActiveCallPage() {
   const router = useRouter();
   const params = useParams<{ pickupRequestId: string }>();
@@ -66,20 +61,20 @@ export default function CrewActiveCallPage() {
 
   const [call, setCall] = useState<CrewCall | null>(null);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("진행 중인 콜 정보를 불러오는 중입니다.");
+  const [message, setMessage] = useState("진행 중인 수거 정보를 불러오는 중입니다.");
   const [pickupPhotoFileName, setPickupPhotoFileName] = useState("crew-pickup-proof-demo.jpg");
   const [hubPhotoFileName, setHubPhotoFileName] = useState("crew-hub-proof-demo.jpg");
   const [inspectionMemo, setInspectionMemo] = useState("문앞 도착 후 상태 확인 및 수거 완료");
-  const [hubMemo, setHubMemo] = useState("e-waste 공장 도착 및 전달 완료 등록");
+  const [hubMemo, setHubMemo] = useState("e-waste 공장 전달 및 처리 완료 등록");
 
   const loadCall = async () => {
     setLoading(true);
     try {
       const data = await fetchCrewCallDetail(pickupRequestId);
       setCall(data);
-      setMessage("진행 중인 콜 정보를 업데이트했습니다.");
+      setMessage("진행 중인 수거 정보를 업데이트했습니다.");
     } catch {
-      setMessage("진행 중인 콜 정보를 불러오지 못했습니다.");
+      setMessage("진행 중인 수거 정보를 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -110,7 +105,7 @@ export default function CrewActiveCallPage() {
         const updated = await updateCrewLocation(pickupRequestId, payload);
         if (!stopped) {
           setCall(updated);
-          setMessage("크루 위치를 사용자 앱에 실시간으로 공유하고 있습니다.");
+          setMessage("크루 위치를 실시간으로 사용자 앱에 공유하고 있습니다.");
         }
       } catch {
         if (!stopped) {
@@ -245,6 +240,7 @@ export default function CrewActiveCallPage() {
   const hubLocation = call?.tracking?.processingCenter
     ? { lat: call.tracking.processingCenter.lat, lng: call.tracking.processingCenter.lng }
     : null;
+
   const mapCenter = crewLocation ?? pickupLocation ?? hubLocation ?? { lat: 37.5665, lng: 126.978 };
   const mapMarkers = [
     ...(pickupLocation ? [{ key: "pickup", label: "P", position: pickupLocation, variant: "pickup" as const }] : []),
@@ -279,11 +275,9 @@ export default function CrewActiveCallPage() {
         </header>
 
         <section className="mt-4 rounded-[18px] bg-lgred p-4 text-white">
-          <p className="text-xs font-black text-white/70">진행 중인 콜</p>
+          <p className="text-xs font-black text-white/70">진행 중인 수거</p>
           <h1 className="mt-2 text-2xl font-black">{call ? applianceName(call) : "수거 요청"}</h1>
-          <p className="mt-2 text-sm font-semibold text-white/85">
-            {call?.pickupRequest?.address ?? "수거 주소 정보 없음"}
-          </p>
+          <p className="mt-2 text-sm font-semibold text-white/85">{call?.pickupRequest?.address ?? "수거 주소 정보 없음"}</p>
         </section>
 
         <section className="mt-4 overflow-hidden rounded-[20px] border border-slate-200 bg-white">
@@ -306,9 +300,9 @@ export default function CrewActiveCallPage() {
             <LeafletTrackingMap center={mapCenter} className="h-[260px] w-full" markers={mapMarkers} path={mapPath} />
           )}
           <div className="grid grid-cols-1 gap-2 border-t border-slate-200 bg-white p-4">
-            <InfoTile label="크루 현재 좌표" value={formatCoordinates(crewLocation)} />
-            <InfoTile label="수거지 좌표" value={formatCoordinates(pickupLocation)} />
-            <InfoTile label="허브 좌표" value={formatCoordinates(hubLocation)} />
+            <InfoTile label="수거지 주소" value={call?.pickupRequest?.address ?? "-"} />
+            <InfoTile label="상세 위치" value={call?.booking?.detailAddress?.trim() || "-"} />
+            <InfoTile label="처리 허브" value={call?.tracking?.processingCenter?.label ?? "-"} />
           </div>
         </section>
 
@@ -316,13 +310,13 @@ export default function CrewActiveCallPage() {
           <InfoTile label="현재 상태" value={statusLabel(status)} />
           <InfoTile label="수거지까지" value={call?.tracking?.route?.distanceLabel ?? formatDistance(call?.tracking?.metrics?.crewToPickupMeters)} />
           <InfoTile label="예상 소요 시간" value={call?.tracking?.route?.durationLabel ?? "-"} />
-          <InfoTile label="좌표 갱신 시각" value={formatDateTime(call?.tracking?.driverLocation?.updatedAt)} />
+          <InfoTile label="위치 갱신 시각" value={formatDateTime(call?.tracking?.driverLocation?.updatedAt)} />
         </section>
 
         <section className="mt-4 rounded-[18px] border border-slate-200 bg-white p-4">
           <div className="flex items-center gap-2 text-sm font-black text-black">
             <Navigation size={16} />
-            위치 기반 정보
+            진행 안내
           </div>
           <div className="mt-3 grid grid-cols-1 gap-2">
             <InfoTile label="수거 위치" value={call?.pickupRequest?.address ?? "-"} />
