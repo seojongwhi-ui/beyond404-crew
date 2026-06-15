@@ -247,11 +247,12 @@ export default function CrewActiveCallPage() {
     ...(crewLocation ? [{ key: "crew", label: "C", position: crewLocation, variant: "crew" as const }] : []),
     ...(hubLocation ? [{ key: "hub", label: "H", position: hubLocation, variant: "hub" as const }] : []),
   ];
-  const mapPath =
-    call?.tracking?.route?.points?.map((point) => ({
-      lat: point.lat,
-      lng: point.lng,
-    })) ?? [];
+  const mapPath = crewLocation && routeTarget ? [crewLocation, routeTarget] : [];
+  const pickupAddress = call?.pickupRequest?.address ?? "수거 위치 정보 없음";
+  const hubAddress = call?.tracking?.processingCenter?.label ?? "처리 허브 정보 없음";
+  const crewAddress = crewLocation ? "크루 현재 이동 위치" : "크루 위치 확인 중";
+  const crewToPickupDistance = formatDistance(call?.tracking?.metrics?.crewToPickupMeters);
+  const crewToHubDistance = formatDistance(call?.tracking?.metrics?.crewToProcessingCenterMeters);
 
   return (
     <CrewPhoneShell>
@@ -300,17 +301,17 @@ export default function CrewActiveCallPage() {
             <LeafletTrackingMap center={mapCenter} className="h-[260px] w-full" markers={mapMarkers} path={mapPath} />
           )}
           <div className="grid grid-cols-1 gap-2 border-t border-slate-200 bg-white p-4">
-            <InfoTile label="수거지 주소" value={call?.pickupRequest?.address ?? "-"} />
-            <InfoTile label="상세 위치" value={call?.booking?.detailAddress?.trim() || "-"} />
-            <InfoTile label="처리 허브" value={call?.tracking?.processingCenter?.label ?? "-"} />
+            <InfoTile label="크루 현재 위치" value={`${crewAddress} · 수거지까지 ${crewToPickupDistance}`} />
+            <InfoTile label="수거 위치" value={pickupAddress} />
+            <InfoTile label="처리 허브" value={`${hubAddress} · 허브까지 ${crewToHubDistance}`} />
           </div>
         </section>
 
         <section className="mt-4 grid grid-cols-2 gap-2">
           <InfoTile label="현재 상태" value={statusLabel(status)} />
-          <InfoTile label="수거지까지" value={call?.tracking?.route?.distanceLabel ?? formatDistance(call?.tracking?.metrics?.crewToPickupMeters)} />
-          <InfoTile label="예상 소요 시간" value={call?.tracking?.route?.durationLabel ?? "-"} />
-          <InfoTile label="위치 갱신 시각" value={formatDateTime(call?.tracking?.driverLocation?.updatedAt)} />
+          <InfoTile label="수거지까지" value={crewToPickupDistance} />
+          <InfoTile label="허브까지" value={crewToHubDistance} />
+          <InfoTile label="좌표 갱신 시각" value={formatDateTime(call?.tracking?.driverLocation?.updatedAt)} />
         </section>
 
         <section className="mt-4 rounded-[18px] border border-slate-200 bg-white p-4">
