@@ -167,6 +167,10 @@ export function fetchActiveCrewCalls() {
   return crewRequest<CrewCall[]>("/api/crew/calls/active");
 }
 
+export function fetchCompletedCrewCalls() {
+  return crewRequest<CrewCall[]>("/api/crew/calls/completed");
+}
+
 export function fetchCrewCallDetail(pickupRequestId: number) {
   return crewRequest<CrewCall>(`/api/crew/calls/${pickupRequestId}`);
 }

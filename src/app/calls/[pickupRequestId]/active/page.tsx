@@ -1,23 +1,22 @@
 "use client";
 
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
+import { GoogleCanvasMap } from "@/components/maps/GoogleCanvasMap";
+import { LeafletTrackingMap } from "@/components/maps/LeafletTrackingMap";
 import {
   applianceName,
-  arriveCrewCall,
   completeCrewCall,
   departCrewCall,
   fetchCrewCallDetail,
   formatDistance,
-  statusLabel,
   updateCrewLocation,
   type CrewCall,
 } from "@/lib/crew-api";
-import { ArrowLeft, Home, MapPin, Navigation, Timer, Truck, Warehouse } from "lucide-react";
-import dynamic from "next/dynamic";
+import { ArrowLeft, ChevronRight, Home, MapPin, Navigation, Timer, Truck, Warehouse } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 
-type Coordinates = {
+type Coordinate = {
   lat: number;
   lng: number;
 };
@@ -29,22 +28,27 @@ type LocationPayload = {
   speed?: number;
 };
 
-const LeafletTrackingMap = dynamic(
-  () => import("@/components/maps/LeafletTrackingMap").then((module) => module.LeafletTrackingMap),
-  { ssr: false },
-);
+type PickupMapMarker = {
+  key: "pickup" | "crew" | "hub";
+  label?: string;
+  position: Coordinate;
+  title: string;
+  variant: "pickup" | "crew" | "hub";
+};
 
-const GoogleCanvasMap = dynamic(
-  () => import("@/components/maps/GoogleCanvasMap").then((module) => module.GoogleCanvasMap),
-  { ssr: false },
-);
-
-const googleMapsApiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ?? "";
+const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ?? "";
+const DEFAULT_CENTER = { lat: 37.5665, lng: 126.978 };
+const DEFAULT_PICKUP_PHOTO = "crew-pickup-proof-demo.jpg";
+const DEFAULT_HUB_PHOTO = "crew-hub-proof-demo.jpg";
+const DEFAULT_PICKUP_MEMO = "문앞 도착 후 상태 확인 및 수거 완료";
+const DEFAULT_HUB_MEMO = "e-waste 공장 전달 및 처리 완료 등록";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "-";
+
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
+
   return new Intl.DateTimeFormat("ko-KR", {
     month: "2-digit",
     day: "2-digit",
@@ -52,6 +56,21 @@ function formatDateTime(value?: string | null) {
     minute: "2-digit",
     hour12: false,
   }).format(parsed);
+}
+
+function pickupStatusLabel(status?: string | null) {
+  switch (status) {
+    case "ASSIGNED":
+      return "콜 수락 완료";
+    case "IN_PROGRESS":
+      return "수거지 이동 중";
+    case "ARRIVED":
+      return "문앞 도착";
+    case "COMPLETED":
+      return "처리 완료";
+    default:
+      return "상태 확인 중";
+  }
 }
 
 export default function CrewActiveCallPage() {
@@ -62,10 +81,9 @@ export default function CrewActiveCallPage() {
   const [call, setCall] = useState<CrewCall | null>(null);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("진행 중인 수거 정보를 불러오는 중입니다.");
-  const [pickupPhotoFileName, setPickupPhotoFileName] = useState("crew-pickup-proof-demo.jpg");
-  const [hubPhotoFileName, setHubPhotoFileName] = useState("crew-hub-proof-demo.jpg");
-  const [inspectionMemo, setInspectionMemo] = useState("문앞 도착 후 상태 확인 및 수거 완료");
-  const [hubMemo, setHubMemo] = useState("e-waste 공장 전달 및 처리 완료 등록");
+  const [selectedPickupOpen, setSelectedPickupOpen] = useState(false);
+  const [selectedMapCenter, setSelectedMapCenter] = useState<Coordinate | null>(null);
+  const [selectedMapZoom, setSelectedMapZoom] = useState<number | null>(null);
 
   const loadCall = async () => {
     setLoading(true);
@@ -85,6 +103,7 @@ export default function CrewActiveCallPage() {
     const timer = window.setInterval(() => {
       void loadCall();
     }, 8000);
+
     return () => window.clearInterval(timer);
   }, [pickupRequestId]);
 
@@ -103,7 +122,7 @@ export default function CrewActiveCallPage() {
         const updated = await updateCrewLocation(pickupRequestId, payload);
         if (!stopped) {
           setCall(updated);
-          setMessage("크루 위치를 실시간으로 사용자 앱에 공유하고 있습니다.");
+          setMessage("크루 위치를 실시간으로 업데이트하고 있습니다.");
         }
       } catch {
         if (!stopped) {
@@ -113,8 +132,8 @@ export default function CrewActiveCallPage() {
     };
 
     const startFallbackSimulation = () => {
-      const pickupLat = call?.booking?.pickupLat ?? 37.5665;
-      const pickupLng = call?.booking?.pickupLng ?? 126.978;
+      const pickupLat = call?.booking?.pickupLat ?? DEFAULT_CENTER.lat;
+      const pickupLng = call?.booking?.pickupLng ?? DEFAULT_CENTER.lng;
       const hubLat = call?.tracking?.processingCenter?.lat ?? pickupLat + 0.014;
       const hubLng = call?.tracking?.processingCenter?.lng ?? pickupLng - 0.012;
       const headingToHub = status === "ARRIVED";
@@ -129,6 +148,7 @@ export default function CrewActiveCallPage() {
         const ratio = Math.min(step / 10, 1);
         const lat = startLat + (targetLat - startLat) * ratio;
         const lng = startLng + (targetLng - startLng) * ratio;
+
         await sendLocation({
           lat: Number(lat.toFixed(6)),
           lng: Number(lng.toFixed(6)),
@@ -179,7 +199,7 @@ export default function CrewActiveCallPage() {
       };
     }
 
-    setMessage("이 기기에서는 GPS 사용이 어려워 시뮬레이션 위치를 전송합니다.");
+    setMessage("이 기기에서는 GPS를 사용할 수 없어 시뮬레이션 위치를 전송합니다.");
     fallbackCleanup = startFallbackSimulation();
 
     return () => {
@@ -198,29 +218,24 @@ export default function CrewActiveCallPage() {
     status,
   ]);
 
-  const runAction = async (action: "depart" | "arrive" | "complete") => {
+  const runAction = async (action: "depart" | "complete") => {
     setLoading(true);
+
     try {
       const updated =
         action === "depart"
           ? await departCrewCall(pickupRequestId)
-          : action === "arrive"
-            ? await arriveCrewCall(pickupRequestId)
-            : await completeCrewCall(pickupRequestId, {
-                pickupPhotoFileName,
-                hubPhotoFileName,
-                inspectionMemo,
-                hubMemo,
-              });
+          : await completeCrewCall(pickupRequestId, {
+              pickupPhotoFileName: DEFAULT_PICKUP_PHOTO,
+              hubPhotoFileName: DEFAULT_HUB_PHOTO,
+              inspectionMemo: DEFAULT_PICKUP_MEMO,
+              hubMemo: DEFAULT_HUB_MEMO,
+            });
 
       setCall(updated);
-      setMessage(actionMessage(action));
-
-      if (action === "complete") {
-        router.push("/");
-      }
+      setMessage(action === "depart" ? "수거지 출발 처리가 완료되었습니다." : "처리 완료가 반영되었습니다.");
     } catch {
-      setMessage("처리 요청 중 문제가 발생했습니다.");
+      setMessage("진행 처리 중 문제가 발생했습니다.");
     } finally {
       setLoading(false);
     }
@@ -237,31 +252,52 @@ export default function CrewActiveCallPage() {
     ? { lat: call.tracking.processingCenter.lat, lng: call.tracking.processingCenter.lng }
     : null;
 
-  const routeTarget = status === "ARRIVED" || status === "COMPLETED" ? hubLocation ?? pickupLocation : pickupLocation;
-  const mapCenter = crewLocation ?? pickupLocation ?? hubLocation ?? { lat: 37.5665, lng: 126.978 };
-  const mapMarkers = [
-    ...(pickupLocation ? [{ key: "pickup", label: "P", position: pickupLocation, variant: "pickup" as const }] : []),
-    ...(crewLocation ? [{ key: "crew", label: "C", position: crewLocation, variant: "crew" as const }] : []),
-    ...(hubLocation ? [{ key: "hub", label: "H", position: hubLocation, variant: "hub" as const }] : []),
+  const pickupAddress = call?.pickupRequest?.address ?? "수거지 주소 정보가 없습니다.";
+  const routeTarget = status === "COMPLETED" ? hubLocation ?? pickupLocation : pickupLocation;
+  const baseCenter = crewLocation ?? pickupLocation ?? hubLocation ?? DEFAULT_CENTER;
+  const mapCenter = selectedMapCenter ?? baseCenter;
+  const mapZoom = selectedMapZoom ?? 17;
+  const mapMarkers: PickupMapMarker[] = [
+    ...(pickupLocation
+      ? [{ key: "pickup" as const, label: "", position: pickupLocation, title: "pickup", variant: "pickup" as const }]
+      : []),
+    ...(crewLocation
+      ? [{ key: "crew" as const, label: "C", position: crewLocation, title: "crew", variant: "crew" as const }]
+      : []),
+    ...(hubLocation ? [{ key: "hub" as const, label: "H", position: hubLocation, title: "hub", variant: "hub" as const }] : []),
   ];
   const mapPath =
     call?.tracking?.route?.points?.map((point) => ({
       lat: point.lat,
       lng: point.lng,
     })) ??
-    (() => {
-      const routeTarget = status === "ARRIVED" || status === "COMPLETED" ? hubLocation ?? pickupLocation : pickupLocation;
-      return crewLocation && routeTarget ? [crewLocation, routeTarget] : [];
-    })();
+    (crewLocation && routeTarget ? [crewLocation, routeTarget] : []);
 
-  const pickupAddress = call?.pickupRequest?.address ?? "수거 위치 정보 없음";
-  const hubAddress = call?.tracking?.processingCenter?.label ?? "처리 허브 정보 없음";
+  const statusText = pickupStatusLabel(status);
   const crewDistance = call?.tracking?.route?.distanceLabel ?? formatDistance(call?.tracking?.metrics?.crewToPickupMeters);
   const durationLabel = call?.tracking?.route?.durationLabel ?? "-";
+  const hubAddress = call?.tracking?.processingCenter?.label ?? "처리 허브 정보가 없습니다.";
   const hubDistance = formatDistance(call?.tracking?.metrics?.crewToProcessingCenterMeters);
   const liveStatus = call?.tracking?.metrics?.locationLive ? "실시간 GPS 반영 중" : "위치 확인 중";
+  const detailAddress = call?.booking?.detailAddress?.trim() || "상세 위치 정보 없음";
+  const canDepart = status === "ASSIGNED";
+  const canComplete = ["IN_PROGRESS", "ARRIVED"].includes(status);
 
-  const currentStep = status === "COMPLETED" ? 4 : status === "ARRIVED" ? 3 : status === "IN_PROGRESS" ? 2 : status === "ASSIGNED" ? 1 : 0;
+  const handleMarkerClick = (marker: { key: string; position: Coordinate }) => {
+    if (marker.key !== "pickup") return;
+
+    setSelectedPickupOpen(true);
+    setSelectedMapCenter(marker.position);
+    setSelectedMapZoom(19);
+  };
+
+  const closePickupCard = () => {
+    setSelectedPickupOpen(false);
+    setSelectedMapCenter(null);
+    setSelectedMapZoom(null);
+  };
+
+  const primaryDetailLink = status === "COMPLETED" ? "/" : "/active";
 
   return (
     <CrewPhoneShell>
@@ -284,67 +320,65 @@ export default function CrewActiveCallPage() {
           </button>
         </header>
 
-        <section className="mt-5 overflow-hidden rounded-[28px] bg-[linear-gradient(135deg,#b6144b_0%,#7f1637_100%)] px-5 py-5 text-white shadow-[0_18px_40px_rgba(166,15,59,0.22)]">
-          <p className="text-xs font-black uppercase tracking-[0.18em] text-white/60">Live Pickup</p>
-          <h1 className="mt-3 text-[28px] font-black leading-[1.18]">{call ? applianceName(call) : "진행 중인 수거"}</h1>
-          <p className="mt-3 text-sm leading-6 text-white/82">{pickupAddress}</p>
-
-          <div className="mt-5 grid grid-cols-3 gap-3">
-            <HeroStat label="현재 상태" value={statusLabel(status)} />
-            <HeroStat label="수거지까지" value={crewDistance} />
-            <HeroStat label="예상 시간" value={durationLabel} />
-          </div>
-        </section>
-
-        <section className="mt-4 rounded-[24px] bg-white p-4 shadow-sm">
+        <section className="mt-5 rounded-[24px] bg-white p-4 shadow-sm">
           <div className="flex items-center gap-2 text-sm font-black text-ink">
             <Navigation size={16} className="text-lgred" />
             이동 지도
           </div>
+
           <div className="mt-4 overflow-hidden rounded-[20px] border border-slate-200 bg-cloud">
-            {googleMapsApiKey ? (
+            {GOOGLE_MAPS_API_KEY ? (
               <GoogleCanvasMap
-                apiKey={googleMapsApiKey}
+                apiKey={GOOGLE_MAPS_API_KEY}
                 center={mapCenter}
-                className="h-[280px] w-full"
-                fitBounds
-                markers={mapMarkers.map((marker) => ({
-                  key: marker.key,
-                  label: marker.label,
-                  position: marker.position,
-                  title: marker.key,
-                }))}
+                className="h-[500px] w-full"
+                markers={mapMarkers}
+                onMarkerClick={handleMarkerClick}
                 path={mapPath}
-                zoom={16}
+                zoom={mapZoom}
               />
             ) : (
-              <LeafletTrackingMap center={mapCenter} className="h-[280px] w-full" markers={mapMarkers} path={mapPath} />
+              <LeafletTrackingMap
+                center={mapCenter}
+                className="h-[500px] w-full"
+                markers={mapMarkers}
+                onMarkerClick={handleMarkerClick}
+                path={mapPath}
+                zoom={mapZoom}
+              />
             )}
           </div>
 
-          <div className="mt-4 grid grid-cols-1 gap-3">
-            <InfoTile label="수거지 주소" value={pickupAddress} />
-            <InfoTile label="상세 위치" value={call?.booking?.detailAddress?.trim() || "-"} />
-            <InfoTile label="처리 허브" value={`${hubAddress} · ${hubDistance}`} />
-          </div>
-        </section>
-
-        <section className="mt-4 rounded-[24px] bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm font-black text-ink">
-            <Timer size={16} className="text-lgred" />
-            진행 단계
-          </div>
-          <div className="mt-4 space-y-4">
-            <ProgressRow active={currentStep >= 1} title="콜 수락 완료" description="배정이 확정되었고 사용자 앱에 크루 정보가 공유됩니다." />
-            <ProgressRow active={currentStep >= 2} title="수거지 이동 중" description="크루의 현재 위치와 이동 경로가 주기적으로 반영됩니다." />
-            <ProgressRow active={currentStep >= 3} title="문앞 도착" description="문앞 도착 처리 시 사용자 앱에도 도착 단계가 표시됩니다." />
-            <ProgressRow active={currentStep >= 4} title="e-waste 공장 전달 완료" description="처리 완료 등록 시 사용자 앱에 최종 완료 상태가 표시됩니다." />
-          </div>
-        </section>
-
-        <section className="mt-4 grid grid-cols-2 gap-3">
-          <InfoTile label="위치 갱신 시각" value={formatDateTime(call?.tracking?.driverLocation?.updatedAt)} />
-          <InfoTile label="실시간 상태" value={liveStatus} />
+          {selectedPickupOpen ? (
+            <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+              <div className="flex items-start justify-between gap-3 px-5 pb-2 pt-5">
+                <div>
+                  <p className="text-[28px] font-black leading-none text-ink">{call ? applianceName(call) : "수거지 정보"}</p>
+                  <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">{pickupAddress}</p>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-400">{detailAddress}</p>
+                </div>
+                <button
+                  className="flex h-10 w-10 items-center justify-center rounded-full bg-cloud text-slate-500"
+                  onClick={closePickupCard}
+                  type="button"
+                >
+                  <ChevronRight className="rotate-90" size={18} />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3 px-5 pb-5 pt-3">
+                <InfoTile label="현재 상태" value={statusText} />
+                <InfoTile label="수거지까지" value={crewDistance} />
+                <InfoTile label="예상 시간" value={durationLabel} />
+                <InfoTile label="허브" value={`${hubAddress} · ${hubDistance}`} />
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 grid grid-cols-1 gap-3">
+              <InfoTile label="수거지 주소" value={pickupAddress} />
+              <InfoTile label="실시간 상태" value={liveStatus} />
+              <InfoTile label="위치 갱신 시각" value={formatDateTime(call?.tracking?.driverLocation?.updatedAt)} />
+            </div>
+          )}
         </section>
 
         <section className="mt-4 rounded-[24px] bg-white p-4 shadow-sm">
@@ -352,111 +386,88 @@ export default function CrewActiveCallPage() {
             <Truck size={16} className="text-lgred" />
             진행 처리
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-3">
-            <ActionButton
-              disabled={loading || status !== "ASSIGNED"}
-              icon={<Truck size={16} />}
+
+          <div className="mt-4 space-y-3">
+            <ProgressActionCard
+              active={canDepart}
+              disabled={loading || !canDepart}
+              icon={<Truck size={18} />}
               label="수거지 출발"
+              description="콜 수락 후 수거지로 이동을 시작할 때 누릅니다."
               onClick={() => void runAction("depart")}
             />
-            <ActionButton
-              disabled={loading || status !== "IN_PROGRESS"}
-              icon={<MapPin size={16} />}
-              label="문앞 도착"
-              onClick={() => void runAction("arrive")}
-            />
-            <ActionButton
-              disabled={loading || status !== "ARRIVED"}
-              icon={<Warehouse size={16} />}
+            <ProgressActionCard
+              active={canComplete}
+              disabled={loading || !canComplete}
+              icon={<Warehouse size={18} />}
               label="처리 완료"
+              description="수거 및 전달이 끝났을 때 최종 완료 상태로 반영합니다."
               onClick={() => void runAction("complete")}
-            />
-            <InfoTile
-              label="사용자 앱 반영"
-              value={
-                status === "ARRIVED"
-                  ? "문앞 도착 단계 반영"
-                  : status === "COMPLETED"
-                    ? "e-waste 공장 전달 완료 반영"
-                    : "실시간 위치 공유"
-              }
             />
           </div>
         </section>
 
         <section className="mt-4 rounded-[24px] bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm font-black text-ink">
-            <Warehouse size={16} className="text-lgred" />
-            현장 및 허브 증빙 등록
-          </div>
-          <div className="mt-4 space-y-3">
-            <InputField label="현장 수거 사진 파일명" value={pickupPhotoFileName} onChange={setPickupPhotoFileName} />
-            <InputField label="현장 확인 메모" value={inspectionMemo} onChange={setInspectionMemo} />
-            <InputField label="허브 완료 사진 파일명" value={hubPhotoFileName} onChange={setHubPhotoFileName} />
-            <InputField label="허브 전달 메모" value={hubMemo} onChange={setHubMemo} />
+          <div className="text-sm font-black text-ink">현재 진행 안내</div>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <InfoTile label="진행 상태" value={statusText} />
+            <InfoTile label="예상 시간" value={durationLabel} />
           </div>
         </section>
 
         <div className="mt-4 rounded-[18px] bg-white px-4 py-4 text-sm font-bold leading-6 text-slate-600 shadow-sm">
           {loading ? "처리 중..." : message}
         </div>
+
+        <button
+          className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-white text-sm font-black text-slate-700 shadow-sm"
+          onClick={() => router.push(primaryDetailLink)}
+          type="button"
+        >
+          목록으로 돌아가기
+        </button>
       </div>
     </CrewPhoneShell>
   );
 }
 
-function HeroStat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[18px] bg-white/12 px-3 py-3 backdrop-blur-sm">
-      <p className="text-[11px] font-bold text-white/65">{label}</p>
-      <p className="mt-2 text-sm font-black text-white">{value}</p>
-    </div>
-  );
-}
-
-function ProgressRow({
+function ProgressActionCard({
   active,
-  title,
-  description,
-}: {
-  active: boolean;
-  title: string;
-  description: string;
-}) {
-  return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <span className={`mt-1 h-3.5 w-3.5 rounded-full ${active ? "bg-lgred" : "bg-slate-200"}`} />
-        <span className={`mt-2 w-px flex-1 ${active ? "bg-lgred/30" : "bg-slate-200"}`} />
-      </div>
-      <div className="pb-2">
-        <p className={`text-sm font-black ${active ? "text-ink" : "text-slate-400"}`}>{title}</p>
-        <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
-      </div>
-    </div>
-  );
-}
-
-function ActionButton({
   disabled,
   icon,
   label,
+  description,
   onClick,
 }: {
+  active: boolean;
   disabled: boolean;
-  icon: ReactNode;
+  icon: React.ReactNode;
   label: string;
+  description: string;
   onClick: () => void;
 }) {
   return (
     <button
-      className="flex h-13 items-center justify-center gap-2 rounded-[16px] bg-cloud text-sm font-black text-slate-700 disabled:text-slate-300"
+      className={`flex w-full items-start gap-4 rounded-[20px] border px-4 py-4 text-left transition ${
+        active
+          ? "border-lgred/25 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.05)]"
+          : "border-slate-200 bg-cloud text-slate-400"
+      }`}
       disabled={disabled}
       onClick={onClick}
       type="button"
     >
-      {icon}
-      {label}
+      <span
+        className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${
+          active ? "bg-lgred text-white" : "bg-white text-slate-300"
+        }`}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className={`block text-sm font-black ${active ? "text-ink" : "text-slate-400"}`}>{label}</span>
+        <span className="mt-2 block text-sm leading-6 text-slate-500">{description}</span>
+      </span>
     </button>
   );
 }
@@ -468,36 +479,4 @@ function InfoTile({ label, value }: { label: string; value: string }) {
       <p className="mt-2 text-sm font-black leading-6 text-ink">{value}</p>
     </div>
   );
-}
-
-function InputField({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label className="block">
-      <span className="text-xs font-black text-slate-500">{label}</span>
-      <input
-        className="mt-1 h-12 w-full rounded-[16px] border border-slate-200 bg-cloud px-4 text-sm font-semibold text-ink outline-none focus:border-lgred"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
-function actionMessage(action: "depart" | "arrive" | "complete") {
-  switch (action) {
-    case "depart":
-      return "수거지 출발 처리가 완료되었습니다.";
-    case "arrive":
-      return "문앞 도착 처리가 완료되었습니다. 사용자 앱에는 문앞 도착 단계만 반영됩니다.";
-    case "complete":
-      return "처리 완료가 반영되었습니다. 사용자 앱에는 e-waste 공장 전달 완료가 표시됩니다.";
-  }
 }

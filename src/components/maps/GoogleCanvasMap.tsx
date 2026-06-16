@@ -22,6 +22,7 @@ type GoogleCanvasMapProps = {
   path?: Coordinate[];
   className?: string;
   fitBounds?: boolean;
+  onMarkerClick?: (marker: MapMarker) => void;
   onStatusChange?: (status: "loading" | "ready" | "error") => void;
 };
 
@@ -42,6 +43,20 @@ const baseMapOptions: google.maps.MapOptions = {
 
 let googleMapsPromise: Promise<typeof google.maps> | null = null;
 let loadedApiKey: string | null = null;
+
+function buildPickupHomeIcon() {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 48 48">
+      <circle cx="24" cy="24" r="20" fill="white"/>
+      <path d="M14 23.5 24 14l10 9.5" fill="none" stroke="#111827" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M18 24v10.5c0 2 1.3 3.5 3 3.5h6c1.7 0 3-1.5 3-3.5V24" fill="none" stroke="#111827" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+  return {
+    scaledSize: new window.google.maps.Size(44, 44),
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+  };
+}
 
 function loadGoogleMaps(apiKey: string) {
   if (typeof window === "undefined") {
@@ -124,6 +139,7 @@ export function GoogleCanvasMap({
   path,
   className,
   fitBounds = false,
+  onMarkerClick,
   onStatusChange,
 }: GoogleCanvasMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -159,21 +175,30 @@ export function GoogleCanvasMap({
     const map = mapRef.current;
 
     markerRefs.current.forEach((marker) => marker.setMap(null));
-    markerRefs.current = stableMarkers.map(
-      (marker) =>
-        new window.google.maps.Marker({
-          map,
-          position: marker.position,
-          title: marker.title,
-          label: marker.label
+    markerRefs.current = stableMarkers.map((marker) => {
+      const markerInstance = new window.google.maps.Marker({
+        icon: marker.key === "pickup" ? buildPickupHomeIcon() : undefined,
+        map,
+        position: marker.position,
+        title: marker.title,
+        label:
+          marker.key !== "pickup" && marker.label
             ? {
                 text: marker.label,
                 color: "#ffffff",
                 fontWeight: "900",
               }
             : undefined,
-        }),
-    );
+      });
+
+      if (onMarkerClick) {
+        markerInstance.addListener("click", () => {
+          onMarkerClick(marker);
+        });
+      }
+
+      return markerInstance;
+    });
 
     if (polylineRef.current) {
       polylineRef.current.setMap(null);
@@ -200,7 +225,7 @@ export function GoogleCanvasMap({
       map.setCenter(center);
       map.setZoom(zoom);
     }
-  }, [center, fitBounds, stableMarkers, stablePath, status, zoom]);
+  }, [center, fitBounds, onMarkerClick, stableMarkers, stablePath, status, zoom]);
 
   return <div className={className} ref={containerRef} />;
 }

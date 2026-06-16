@@ -55,45 +55,54 @@ export function CrewCallsListPage({
     const timer = window.setInterval(() => {
       void loadCalls();
     }, 5000);
+
     return () => window.clearInterval(timer);
   }, []);
 
   return (
     <CrewPhoneShell>
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 pb-28 pt-4">
-        <header className="flex items-start justify-between gap-4">
-          <div>
-            <p className="text-sm font-black text-lgred">LG ThinQ Crew</p>
-            <h1 className="mt-2 text-[30px] font-black leading-[1.15] text-ink">{title}</h1>
-            <p className="mt-2 text-sm leading-6 text-slate-500">{subtitle}</p>
-          </div>
-          <button
-            className="flex h-11 shrink-0 items-center justify-center rounded-[14px] border border-white bg-white px-4 text-slate-700 shadow-sm disabled:opacity-60"
-            disabled={loading}
-            onClick={() => void loadCalls()}
-            type="button"
-            aria-label="새로고침"
-          >
-            <RefreshCw className={loading ? "animate-spin" : ""} size={17} />
-          </button>
-        </header>
-
-        <section className="mt-5 flex items-center justify-between rounded-[24px] bg-white px-5 py-4 shadow-sm">
-          <div className="flex items-center gap-3">
-            <span className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-lgred/10 text-lgred">
-              <Icon size={20} />
-            </span>
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-5 pt-4">
+        <div className="shrink-0">
+          <header className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-sm font-black text-ink">현재 목록</p>
-              <p className="mt-1 text-xs font-semibold text-slate-400">
-                {lastLoadedAt ? `마지막 확인 ${lastLoadedAt}` : "목록을 불러오는 중"}
-              </p>
+              <p className="text-sm font-black text-lgred">LG ThinQ Crew</p>
+              <h1 className="mt-2 text-[30px] font-black leading-[1.15] text-ink">{title}</h1>
+              <p className="mt-2 text-sm leading-6 text-slate-500">{subtitle}</p>
             </div>
-          </div>
-          <p className="text-3xl font-black text-lgred">{calls.length}</p>
-        </section>
+            <button
+              aria-label="새로고침"
+              className="flex h-11 shrink-0 items-center justify-center rounded-[14px] border border-white bg-white px-4 text-slate-700 shadow-sm disabled:opacity-60"
+              disabled={loading}
+              onClick={() => void loadCalls()}
+              type="button"
+            >
+              <RefreshCw className={loading ? "animate-spin" : ""} size={17} />
+            </button>
+          </header>
 
-        <section className="mt-4 min-h-0 flex-1 overflow-y-auto pr-1 phone-scroll">
+          <section className="mt-5 flex items-center justify-between rounded-[24px] bg-white px-5 py-4 shadow-sm">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 items-center justify-center rounded-[16px] bg-lgred/10 text-lgred">
+                <Icon size={20} />
+              </span>
+              <div>
+                <p className="text-sm font-black text-ink">현재 목록</p>
+                <p className="mt-1 text-xs font-semibold text-slate-400">
+                  {lastLoadedAt ? `마지막 확인 ${lastLoadedAt}` : "목록을 불러오는 중"}
+                </p>
+              </div>
+            </div>
+            <p className="text-3xl font-black text-lgred">{calls.length}</p>
+          </section>
+
+          {errorMessage ? (
+            <div className="mt-4 rounded-[18px] bg-red-50 px-4 py-4 text-sm font-bold leading-6 text-red-700">
+              {errorMessage}
+            </div>
+          ) : null}
+        </div>
+
+        <section className="mt-4 min-h-0 flex-1 overflow-y-auto pb-28 pr-1 phone-scroll">
           <div className="space-y-3">
             {calls.length > 0 ? (
               calls.map((call) => {
@@ -143,12 +152,6 @@ export function CrewCallsListPage({
             )}
           </div>
         </section>
-
-        {errorMessage ? (
-          <div className="mt-4 rounded-[18px] bg-red-50 px-4 py-4 text-sm font-bold leading-6 text-red-700">
-            {errorMessage}
-          </div>
-        ) : null}
       </div>
       <CrewBottomNav />
     </CrewPhoneShell>

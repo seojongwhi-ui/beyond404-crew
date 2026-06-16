@@ -22,6 +22,7 @@ type LeafletTrackingMapProps = {
   maxZoom?: number;
   minZoom?: number;
   zoom?: number;
+  onMarkerClick?: (marker: MarkerConfig) => void;
 };
 
 type GoogleMapsApi = any;
@@ -88,6 +89,21 @@ function markerScale(variant: MarkerConfig["variant"]) {
   return variant === "pickup" ? 11 : 12;
 }
 
+function pickupHomeIcon() {
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="52" height="52" viewBox="0 0 52 52">
+      <circle cx="26" cy="26" r="22" fill="white"/>
+      <path d="M15.5 25.5 26 16l10.5 9.5" fill="none" stroke="#111827" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M20 26v11c0 2.1 1.4 3.5 3.2 3.5h5.6c1.8 0 3.2-1.4 3.2-3.5V26" fill="none" stroke="#111827" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  `;
+
+  return {
+    scaledSize: new window.google.maps.Size(46, 46),
+    url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`,
+  };
+}
+
 export function LeafletTrackingMap({
   center,
   markers,
@@ -96,6 +112,7 @@ export function LeafletTrackingMap({
   maxZoom = 20,
   minZoom = 3,
   zoom = 16,
+  onMarkerClick,
 }: LeafletTrackingMapProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<any>(null);
@@ -145,16 +162,19 @@ export function LeafletTrackingMap({
 
     markerRefs.current.forEach((marker) => marker.setMap(null));
     markerRefs.current = markers.map((marker) => {
-      const safeLabel = (marker.label ?? "").slice(0, 1).toUpperCase();
-      return new window.google.maps.Marker({
-        icon: {
-          fillColor: markerColor(marker.variant),
-          fillOpacity: 1,
-          path: window.google.maps.SymbolPath.CIRCLE,
-          scale: markerScale(marker.variant),
-          strokeColor: "#ffffff",
-          strokeWeight: 3,
-        },
+      const safeLabel = marker.variant === "pickup" ? "" : (marker.label ?? "").slice(0, 1).toUpperCase();
+      const markerInstance = new window.google.maps.Marker({
+        icon:
+          marker.variant === "pickup"
+            ? pickupHomeIcon()
+            : {
+                fillColor: markerColor(marker.variant),
+                fillOpacity: 1,
+                path: window.google.maps.SymbolPath.CIRCLE,
+                scale: markerScale(marker.variant),
+                strokeColor: "#ffffff",
+                strokeWeight: 3,
+              },
         label: safeLabel
           ? {
               color: "#ffffff",
@@ -167,6 +187,14 @@ export function LeafletTrackingMap({
         position: marker.position,
         title: marker.label,
       });
+
+      if (onMarkerClick) {
+        markerInstance.addListener("click", () => {
+          onMarkerClick(marker);
+        });
+      }
+
+      return markerInstance;
     });
 
     if (polylineRef.current) {
@@ -197,7 +225,7 @@ export function LeafletTrackingMap({
         map.setZoom(zoom);
       }
     }
-  }, [center, markers, normalizedPath, zoom]);
+  }, [center, markers, normalizedPath, onMarkerClick, zoom]);
 
   if (loadError) {
     return (

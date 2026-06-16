@@ -44,7 +44,7 @@ export default function CrewCallDetailPage() {
   const status = call?.pickupRequest?.status ?? "";
   const hasAcceptedStatus = ["ASSIGNED", "IN_PROGRESS", "ARRIVED", "COMPLETED"].includes(status);
   const canAccept = Boolean(call) && !hasAcceptedStatus;
-  const canOpenActive = hasAcceptedStatus;
+  const canOpenActive = hasAcceptedStatus && status !== "COMPLETED";
 
   const actionLabel = useMemo(() => {
     if (loading) return "콜 수락 처리 중...";
@@ -58,7 +58,7 @@ export default function CrewCallDetailPage() {
       const data = await acceptCrewCall(pickupRequestId);
       setCall(data);
       setMessage("콜을 수락했습니다. 진행 화면으로 이동합니다.");
-      router.push(`/calls/${pickupRequestId}/active`);
+      router.replace(`/calls/${pickupRequestId}/active`);
     } catch {
       setMessage("콜 수락 처리 중 문제가 발생했습니다.");
       setLoading(false);
@@ -159,7 +159,7 @@ export default function CrewCallDetailPage() {
         <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] border-t border-slate-200 bg-white/95 px-5 pb-5 pt-4 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur">
           {canAccept ? (
             <button
-              className="flex h-13 w-full items-center justify-center gap-2 rounded-[16px] bg-lgred text-sm font-black text-white shadow-[0_14px_26px_rgba(166,15,59,0.22)] disabled:bg-slate-300"
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-lgred text-sm font-black text-white shadow-[0_14px_26px_rgba(166,15,59,0.22)] disabled:bg-slate-300"
               disabled={loading || !call}
               onClick={() => void acceptCall()}
               type="button"
@@ -180,7 +180,7 @@ export default function CrewCallDetailPage() {
           ) : null}
 
           <Link
-            className="mt-3 flex h-12 items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-white text-sm font-black text-slate-700"
+            className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-white text-sm font-black text-slate-700"
             href="/"
           >
             목록으로 돌아가기
