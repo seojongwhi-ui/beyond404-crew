@@ -1,8 +1,7 @@
-"use client";
+﻿"use client";
 
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
-import { GoogleCanvasMap } from "@/components/maps/GoogleCanvasMap";
-import { LeafletTrackingMap } from "@/components/maps/LeafletTrackingMap";
+import { KakaoCanvasMap } from "@/components/maps/KakaoCanvasMap";
 import {
   applianceName,
   completeCrewCall,
@@ -36,11 +35,13 @@ type PickupMapMarker = {
   variant: "pickup" | "crew" | "hub";
 };
 
-const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY?.trim() ?? "";
+type RouteMode = "car" | "walk";
+
+const kakaoMapAppKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY?.trim() ?? "";
 const DEFAULT_PICKUP_PHOTO = "crew-pickup-proof-demo.jpg";
 const DEFAULT_HUB_PHOTO = "crew-hub-proof-demo.jpg";
 const DEFAULT_PICKUP_MEMO = "문앞 도착 후 상태 확인 및 수거 완료";
-const DEFAULT_HUB_MEMO = "e-waste 공장 전달 및 처리 완료 등록";
+const DEFAULT_HUB_MEMO = "e-waste 허브 전달 및 처리 완료 등록";
 
 function formatDateTime(value?: string | null) {
   if (!value) return "-";
@@ -71,6 +72,10 @@ function pickupStatusLabel(status?: string | null) {
   }
 }
 
+function kakaoWalkRouteUrl(origin: Coordinate, destination: Coordinate) {
+  return `https://map.kakao.com/link/by/walk/crew,${origin.lat},${origin.lng}/pickup,${destination.lat},${destination.lng}`;
+}
+
 export default function CrewActiveCallPage() {
   const router = useRouter();
   const params = useParams<{ pickupRequestId: string }>();
@@ -82,6 +87,7 @@ export default function CrewActiveCallPage() {
   const [selectedPickupOpen, setSelectedPickupOpen] = useState(false);
   const [selectedMapCenter, setSelectedMapCenter] = useState<Coordinate | null>(null);
   const [selectedMapZoom, setSelectedMapZoom] = useState<number | null>(null);
+  const [routeMode, setRouteMode] = useState<RouteMode>("car");
 
   const loadCall = async () => {
     setLoading(true);
@@ -256,23 +262,27 @@ export default function CrewActiveCallPage() {
     : null;
 
   const pickupAddress = call?.pickupRequest?.address ?? "수거지 주소 정보가 없습니다.";
+  const routeTarget = status === "ARRIVED" || status === "COMPLETED" ? hubLocation ?? pickupLocation : pickupLocation;
   const mapCenter = selectedMapCenter ?? crewLocation ?? pickupLocation ?? hubLocation;
   const mapZoom = selectedMapZoom ?? 17;
   const mapMarkers: PickupMapMarker[] = [
     ...(pickupLocation
-      ? [{ key: "pickup" as const, label: "", position: pickupLocation, title: "수거지", variant: "pickup" as const }]
+      ? [{ key: "pickup" as const, label: "home", position: pickupLocation, title: "수거지", variant: "pickup" as const }]
       : []),
     ...(crewLocation
       ? [{ key: "crew" as const, label: "C", position: crewLocation, title: "크루 현재 위치", variant: "crew" as const }]
       : []),
     ...(hubLocation ? [{ key: "hub" as const, label: "H", position: hubLocation, title: "처리 허브", variant: "hub" as const }] : []),
   ];
-  const mapPath =
+  const roadRoutePoints =
     call?.tracking?.route?.points?.map((point) => ({
       lat: point.lat,
       lng: point.lng,
     })) ?? [];
-  const hasRoadRoute = mapPath.length > 1;
+  const walkPath = crewLocation && routeTarget ? [crewLocation, routeTarget] : [];
+  const mapPath = routeMode === "car" ? roadRoutePoints : walkPath;
+  const hasRoadRoute = routeMode === "car" && roadRoutePoints.length > 1;
+  const canOpenWalkLink = routeMode === "walk" && crewLocation && routeTarget;
 
   const statusText = pickupStatusLabel(status);
   const crewDistance = call?.tracking?.route?.distanceLabel ?? formatDistance(call?.tracking?.metrics?.crewToPickupMeters);
@@ -332,22 +342,36 @@ export default function CrewActiveCallPage() {
 
           <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-cloud">
             {mapCenter ? (
-              GOOGLE_MAPS_API_KEY ? (
+              kakaoMapAppKey ? (
                 <div className="relative">
-                  <GoogleCanvasMap
-                    apiKey={GOOGLE_MAPS_API_KEY}
+                  <KakaoCanvasMap
+                    appKey={kakaoMapAppKey}
                     center={mapCenter}
                     className="h-[430px] w-full"
                     fitBounds
                     markers={mapMarkers}
                     onMarkerClick={handleMarkerClick}
                     path={mapPath}
-                    routeColor="#d33126"
-                    routeOpacity={0.94}
-                    routeWeight={10}
+                    routeColor={routeMode === "car" ? "#d33126" : "#64748b"}
+                    routeOpacity={routeMode === "car" ? 0.94 : 0.62}
+                    routeWeight={routeMode === "car" ? 10 : 5}
                     zoom={mapZoom}
                   />
-                  <div className="pointer-events-none absolute left-3 right-3 top-3 rounded-[22px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                  <div className="absolute right-3 top-3 z-10 flex rounded-full bg-white/95 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                    {(["car", "walk"] as const).map((mode) => (
+                      <button
+                        key={mode}
+                        className={`rounded-full px-3 py-1.5 text-xs font-black transition ${
+                          routeMode === mode ? "bg-lgred text-white" : "text-slate-500"
+                        }`}
+                        onClick={() => setRouteMode(mode)}
+                        type="button"
+                      >
+                        {mode === "car" ? "차량" : "도보"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="pointer-events-none absolute left-3 right-3 top-14 rounded-[22px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
                     <div className="flex items-start gap-3">
                       <div className="mt-1 flex flex-col items-center">
                         <span className="h-3 w-3 rounded-full bg-[#2563eb] ring-4 ring-blue-100" />
@@ -362,25 +386,37 @@ export default function CrewActiveCallPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="pointer-events-none absolute bottom-3 left-3 right-3 flex items-center justify-between rounded-[18px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                  <div className="absolute bottom-3 left-3 right-3 z-10 flex items-center justify-between rounded-[18px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
                     <div>
-                      <p className="text-xs font-black text-slate-500">{hasRoadRoute ? "도로 경로 안내 중" : "도로 경로 계산 중"}</p>
+                      <p className="text-xs font-black text-slate-500">
+                        {routeMode === "walk" ? "도보 경로 모드" : hasRoadRoute ? "차량 도로 경로 안내 중" : "차량 도로 경로 계산 중"}
+                      </p>
                       <p className="mt-1 text-sm font-black text-ink">{navigationMetric || "위치 확인 중"}</p>
                     </div>
-                    <span className="rounded-full bg-lgred px-3 py-1 text-xs font-black text-white">
-                      {hasRoadRoute ? "LIVE" : "WAIT"}
-                    </span>
+                    {canOpenWalkLink ? (
+                      <button
+                        className="rounded-full bg-ink px-3 py-1 text-xs font-black text-white"
+                        onClick={() => window.open(kakaoWalkRouteUrl(crewLocation, routeTarget), "_blank", "noopener,noreferrer")}
+                        type="button"
+                      >
+                        카카오맵 도보 길찾기
+                      </button>
+                    ) : (
+                      <span className="rounded-full bg-lgred px-3 py-1 text-xs font-black text-white">
+                        {hasRoadRoute ? "LIVE" : "WAIT"}
+                      </span>
+                    )}
                   </div>
                 </div>
               ) : (
-                <LeafletTrackingMap
-                  center={mapCenter}
-                  className="h-[430px] w-full"
-                  markers={mapMarkers}
-                  onMarkerClick={handleMarkerClick}
-                  path={mapPath}
-                  zoom={mapZoom}
-                />
+                <div className="flex h-[430px] w-full items-center justify-center px-6 text-center">
+                  <div>
+                    <p className="text-sm font-black text-ink">Kakao Maps 연결이 필요합니다</p>
+                    <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                      NEXT_PUBLIC_KAKAO_MAP_APP_KEY 환경변수를 설정하면 Kakao 지도로 표시됩니다.
+                    </p>
+                  </div>
+                </div>
               )
             ) : (
               <div className="flex h-[430px] w-full items-center justify-center px-6 text-center">
