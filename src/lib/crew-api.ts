@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 export type NearbyCrew = {
   crewId: number | null;
@@ -58,8 +58,6 @@ export type CrewCall = {
     detailAddress?: string | null;
     pickupLat?: number | null;
     pickupLng?: number | null;
-    pickupAccuracyMeters?: number | null;
-    pickupSource?: string | null;
   } | null;
   dispatchInfo?: {
     alertMessage: string;
@@ -80,12 +78,6 @@ export type CrewCall = {
       crewToPickupMeters: number | null;
       crewToProcessingCenterMeters: number | null;
       locationLive: boolean;
-      driverAccuracyMeters?: number | null;
-      pickupAccuracyMeters?: number | null;
-      proximityStatus?: "SAME_PLACE" | "NEAR" | "ROUTE_REQUIRED" | "LOW_CONFIDENCE" | string;
-      effectiveDistanceMeters?: number | null;
-      effectiveDurationSeconds?: number | null;
-      distanceConfidence?: "HIGH" | "MEDIUM" | "LOW" | string;
     } | null;
     nearbyCrews?: NearbyCrew[];
     driverLocation?: {
@@ -93,10 +85,8 @@ export type CrewCall = {
       lng: number;
       heading: number;
       speed: number;
+      accuracy?: number | null;
       updatedAt?: string | null;
-      accuracyMeters?: number | null;
-      source?: string | null;
-      collectedAt?: string | null;
     } | null;
     route?: {
       mode: string;
@@ -110,9 +100,6 @@ export type CrewCall = {
         lng: number;
       }[];
       calculatedAt?: string | null;
-      routeSource?: string | null;
-      approximate?: boolean;
-      suppressedByProximity?: boolean;
     } | null;
     locationHistory?: {
       lat: number;
@@ -120,13 +107,6 @@ export type CrewCall = {
       heading: number;
       speed: number;
       recordedAt: string;
-      accuracyMeters?: number | null;
-      source?: string | null;
-    }[];
-    events?: {
-      eventType: string;
-      message: string;
-      createdAt: string;
     }[];
   } | null;
   settlement?: {
@@ -153,7 +133,7 @@ function resolveApiBaseUrl() {
     return trimTrailingSlash(publicBaseUrl);
   }
 
-  return "http://127.0.0.1:8082";
+  return "http://127.0.0.1:8080";
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
@@ -208,8 +188,30 @@ export function fetchCrewLocationHistory(pickupRequestId: number) {
   >(`/api/crew/pickups/${pickupRequestId}/location-history`);
 }
 
-export function acceptCrewCall(pickupRequestId: number) {
-  return crewRequest<CrewCall>(`/api/crew/calls/${pickupRequestId}/accept`, { method: "POST" });
+export function acceptCrewCall(
+  pickupRequestId: number,
+  payload?: {
+    lat: number;
+    lng: number;
+    heading?: number;
+    speed?: number;
+    accuracy?: number;
+    capturedAt?: number;
+  },
+) {
+  return crewRequest<CrewCall>(`/api/crew/calls/${pickupRequestId}/accept`, {
+    method: "POST",
+    body: payload
+      ? JSON.stringify({
+          lat: payload.lat,
+          lng: payload.lng,
+          heading: payload.heading ?? 0,
+          speed: payload.speed ?? 0,
+          accuracy: payload.accuracy,
+          capturedAt: payload.capturedAt,
+        })
+      : undefined,
+  });
 }
 
 export function departCrewCall(pickupRequestId: number) {
@@ -242,9 +244,8 @@ export function updateCrewLocation(
     lng: number;
     heading?: number;
     speed?: number;
-    accuracyMeters?: number;
-    collectedAt?: string;
-    source?: string;
+    accuracy?: number;
+    capturedAt?: number;
   },
 ) {
   return crewRequest<CrewCall>(`/api/crew/pickups/${pickupRequestId}/location`, {
@@ -254,9 +255,8 @@ export function updateCrewLocation(
       lng: payload.lng,
       heading: payload.heading ?? 0,
       speed: payload.speed ?? 0,
-      accuracyMeters: payload.accuracyMeters,
-      collectedAt: payload.collectedAt,
-      source: payload.source,
+      accuracy: payload.accuracy,
+      capturedAt: payload.capturedAt,
     }),
   });
 }
@@ -300,12 +300,6 @@ export function formatRequestTime(requestedAt?: string | null, scheduledAt?: str
   const minute = String(parsed.getMinutes()).padStart(2, "0");
 
   return `${month}.${day} ${hour}:${minute}`;
-}
-
-export function formatCallTime(call: CrewCall) {
-  const latestEventAt = call.tracking?.events?.[call.tracking.events.length - 1]?.createdAt;
-  const driverUpdatedAt = call.tracking?.driverLocation?.updatedAt;
-  return formatRequestTime(latestEventAt ?? driverUpdatedAt ?? call.pickupRequest?.requestedAt, call.pickupRequest?.scheduledAt);
 }
 
 export function pickupTypeLabel(value?: string | null) {
