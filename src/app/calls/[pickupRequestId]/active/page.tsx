@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import { KakaoCanvasMap } from "@/components/maps/KakaoCanvasMap";
@@ -11,7 +11,7 @@ import {
   updateCrewLocation,
   type CrewCall,
 } from "@/lib/crew-api";
-import { ArrowLeft, Home, MapPin, Navigation, Truck, Warehouse, X } from "lucide-react";
+import { ArrowLeft, Home, Navigation, Truck, Warehouse, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -46,7 +46,6 @@ type LockedRoute = {
 };
 
 const kakaoMapAppKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY?.trim() ?? "";
-const ENABLE_DEMO_GPS = process.env.NEXT_PUBLIC_ENABLE_DEMO_GPS === "true";
 const DEFAULT_PICKUP_PHOTO = "crew-pickup-proof-demo.jpg";
 const DEFAULT_HUB_PHOTO = "crew-hub-proof-demo.jpg";
 const DEFAULT_PICKUP_MEMO = "문앞 도착 후 상태 확인 및 수거 완료";
@@ -79,6 +78,16 @@ function pickupStatusLabel(status?: string | null) {
     default:
       return "상태 확인 중";
   }
+}
+
+function kakaoWalkRouteUrl(origin: Coordinate, destination: Coordinate) {
+  return `https://map.kakao.com/link/by/walk/crew,${origin.lat},${origin.lng}/pickup,${destination.lat},${destination.lng}`;
+}
+
+function formatWalkDuration(distanceMeters?: number | null) {
+  if (distanceMeters == null) return "-";
+  const minutes = Math.max(1, Math.round(distanceMeters / 80));
+  return `${minutes}분`;
 }
 
 function formatCalories(distanceMeters?: number | null) {
@@ -208,10 +217,8 @@ export default function CrewActiveCallPage() {
           });
         },
         () => {
-          if (ENABLE_DEMO_GPS && !fallbackCleanup) {
+          if (!fallbackCleanup) {
             fallbackCleanup = startFallbackSimulation();
-          } else if (!stopped) {
-            setMessage("크루 위치 권한을 허용하면 실제 현재 위치가 고객에게 표시됩니다.");
           }
         },
         {
@@ -228,11 +235,7 @@ export default function CrewActiveCallPage() {
       };
     }
 
-    if (ENABLE_DEMO_GPS) {
-      fallbackCleanup = startFallbackSimulation();
-    } else {
-      setMessage("보안 연결에서 위치 권한을 허용하면 실제 현재 위치가 고객에게 표시됩니다.");
-    }
+    fallbackCleanup = startFallbackSimulation();
 
     return () => {
       stopped = true;
@@ -345,7 +348,9 @@ export default function CrewActiveCallPage() {
   const calorieLabel = formatCalories(routeDistanceMeters);
   const hubAddress = call?.tracking?.processingCenter?.label ?? "처리 허브 정보가 없습니다.";
   const hubDistance = formatDistance(call?.tracking?.metrics?.crewToProcessingCenterMeters);
-  const liveStatus = call?.tracking?.metrics?.locationLive ? "실시간 GPS 반영 중" : "위치 확인 중";
+  const liveStatusBase = call?.tracking?.metrics?.locationLive ? "실시간 GPS 반영 중" : "위치 확인 중";
+  const liveStatusMetrics = [crewDistance, durationLabel].filter((value) => value && value !== "-").join(" · ");
+  const liveStatus = liveStatusMetrics ? `${liveStatusBase} · ${liveStatusMetrics}` : liveStatusBase;
   const detailAddress = call?.booking?.detailAddress?.trim() || "상세 위치 정보 없음";
   const canDepart = status === "ASSIGNED";
   const canComplete = ["IN_PROGRESS", "ARRIVED"].includes(status);
@@ -362,10 +367,6 @@ export default function CrewActiveCallPage() {
     setSelectedMapCenter(null);
     setSelectedMapZoom(null);
   };
-
-  const destinationLabel = status === "ARRIVED" || status === "COMPLETED" ? "처리 허브" : "수거지";
-  const destinationAddress = destinationLabel === "처리 허브" ? hubAddress : pickupAddress;
-
   return (
     <CrewPhoneShell>
       <div className="relative flex min-h-0 flex-1 flex-col bg-cloud">
@@ -411,13 +412,14 @@ export default function CrewActiveCallPage() {
                       routeWeight={hasRoadRoute ? 10 : 5}
                       zoom={mapZoom}
                     />
+
                   </div>
                 ) : (
                   <div className="flex h-[430px] w-full items-center justify-center px-6 text-center">
                     <div>
                       <p className="text-sm font-black text-ink">Kakao Maps 연결이 필요합니다</p>
                       <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
-                        `NEXT_PUBLIC_KAKAO_MAP_APP_KEY` 환경변수를 설정하면 지도를 표시할 수 있습니다.
+                        `NEXT_PUBLIC_KAKAO_MAP_APP_KEY` 값을 확인한 뒤 앱을 다시 실행해 주세요.
                       </p>
                     </div>
                   </div>

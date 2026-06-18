@@ -85,7 +85,6 @@ export type CrewCall = {
       lng: number;
       heading: number;
       speed: number;
-      accuracy?: number | null;
       updatedAt?: string | null;
     } | null;
     route?: {
@@ -201,16 +200,7 @@ export function acceptCrewCall(
 ) {
   return crewRequest<CrewCall>(`/api/crew/calls/${pickupRequestId}/accept`, {
     method: "POST",
-    body: payload
-      ? JSON.stringify({
-          lat: payload.lat,
-          lng: payload.lng,
-          heading: payload.heading ?? 0,
-          speed: payload.speed ?? 0,
-          accuracy: payload.accuracy,
-          capturedAt: payload.capturedAt,
-        })
-      : undefined,
+    body: payload ? JSON.stringify(payload) : undefined,
   });
 }
 
@@ -300,6 +290,10 @@ export function formatRequestTime(requestedAt?: string | null, scheduledAt?: str
   const minute = String(parsed.getMinutes()).padStart(2, "0");
 
   return `${month}.${day} ${hour}:${minute}`;
+}
+
+export function formatCallTime(call: CrewCall) {
+  return formatRequestTime(call.pickupRequest?.requestedAt, call.pickupRequest?.scheduledAt);
 }
 
 export function pickupTypeLabel(value?: string | null) {
