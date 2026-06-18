@@ -26,7 +26,12 @@ type LocationPayload = {
   lng: number;
   heading?: number;
   speed?: number;
+  accuracyMeters?: number;
+  collectedAt?: string;
+  source?: string;
 };
+
+type TrackingMetrics = NonNullable<NonNullable<CrewCall["tracking"]>["metrics"]>;
 
 type PickupMapMarker = {
   key: "pickup" | "crew" | "hub";
@@ -106,6 +111,9 @@ export default function CrewActiveCallPage() {
     let stopped = false;
     let fallbackCleanup: (() => void) | undefined;
     let lastSentAt = 0;
+    let bestPosition: GeolocationPosition | null = null;
+    let bestFixTimer: number | undefined;
+    let lastSentPoint: Coordinate | null = null;
 
     const sendLocation = async (payload: LocationPayload) => {
       try {
@@ -148,6 +156,9 @@ export default function CrewActiveCallPage() {
           lng: Number(lng.toFixed(6)),
           heading: headingToHub ? 135 : 90,
           speed: Math.max(4, 18 - step),
+          accuracyMeters: 999,
+          collectedAt: new Date().toISOString(),
+          source: "simulation",
         });
       };
 
@@ -160,18 +171,58 @@ export default function CrewActiveCallPage() {
     };
 
     if ("geolocation" in navigator && window.isSecureContext) {
+      const sendBrowserPosition = (position: GeolocationPosition) => {
+        const point = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        const now = Date.now();
+        const movedMeters = lastSentPoint ? distanceMeters(lastSentPoint, point) : Number.POSITIVE_INFINITY;
+        const accuracy = position.coords.accuracy;
+
+        if (now - position.timestamp > 10000) return;
+        if (now - lastSentAt < 2500 && movedMeters < 10 && accuracy > 25) return;
+
+        lastSentAt = now;
+        lastSentPoint = point;
+        void sendLocation({
+          lat: point.lat,
+          lng: point.lng,
+          heading: position.coords.heading ?? 0,
+          speed: position.coords.speed ?? 0,
+          accuracyMeters: accuracy,
+          collectedAt: new Date(position.timestamp).toISOString(),
+          source: "browser_geolocation",
+        });
+      };
+
       const watchId = navigator.geolocation.watchPosition(
         (position) => {
-          const now = Date.now();
-          if (now - lastSentAt < 3000) return;
-          lastSentAt = now;
+          if (Date.now() - position.timestamp > 10000) return;
 
-          void sendLocation({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-            heading: position.coords.heading ?? 0,
-            speed: position.coords.speed ?? 0,
-          });
+          if (!bestPosition || position.coords.accuracy < bestPosition.coords.accuracy) {
+            bestPosition = position;
+          }
+
+          if (position.coords.accuracy <= 25) {
+            if (bestFixTimer) {
+              window.clearTimeout(bestFixTimer);
+              bestFixTimer = undefined;
+            }
+            bestPosition = null;
+            sendBrowserPosition(position);
+            return;
+          }
+
+          if (!bestFixTimer) {
+            bestFixTimer = window.setTimeout(() => {
+              if (bestPosition) {
+                sendBrowserPosition(bestPosition);
+                bestPosition = null;
+              }
+              bestFixTimer = undefined;
+            }, 5000);
+          }
         },
         () => {
           if (!fallbackCleanup) {
@@ -180,14 +231,17 @@ export default function CrewActiveCallPage() {
         },
         {
           enableHighAccuracy: true,
-          maximumAge: 3000,
-          timeout: 10000,
+          maximumAge: 0,
+          timeout: 15000,
         },
       );
 
       return () => {
         stopped = true;
         navigator.geolocation.clearWatch(watchId);
+        if (bestFixTimer) {
+          window.clearTimeout(bestFixTimer);
+        }
         fallbackCleanup?.();
       };
     }
