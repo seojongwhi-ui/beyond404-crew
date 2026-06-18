@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import { KakaoCanvasMap } from "@/components/maps/KakaoCanvasMap";
@@ -36,6 +36,14 @@ type PickupMapMarker = {
 };
 
 type RouteMode = "car" | "walk";
+
+type LockedRoute = {
+  points: Coordinate[];
+  distanceMeters?: number | null;
+  durationSeconds?: number | null;
+  distanceLabel?: string | null;
+  durationLabel?: string | null;
+};
 
 const kakaoMapAppKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY?.trim() ?? "";
 const DEFAULT_PICKUP_PHOTO = "crew-pickup-proof-demo.jpg";
@@ -76,6 +84,17 @@ function kakaoWalkRouteUrl(origin: Coordinate, destination: Coordinate) {
   return `https://map.kakao.com/link/by/walk/crew,${origin.lat},${origin.lng}/pickup,${destination.lat},${destination.lng}`;
 }
 
+function formatWalkDuration(distanceMeters?: number | null) {
+  if (distanceMeters == null) return "-";
+  const minutes = Math.max(1, Math.round(distanceMeters / 80));
+  return `${minutes} min`;
+}
+
+function formatCalories(distanceMeters?: number | null) {
+  if (distanceMeters == null) return "-";
+  return `${Math.max(1, Math.round(distanceMeters * 0.044))} kcal`;
+}
+
 export default function CrewActiveCallPage() {
   const router = useRouter();
   const params = useParams<{ pickupRequestId: string }>();
@@ -88,6 +107,7 @@ export default function CrewActiveCallPage() {
   const [selectedMapCenter, setSelectedMapCenter] = useState<Coordinate | null>(null);
   const [selectedMapZoom, setSelectedMapZoom] = useState<number | null>(null);
   const [routeMode, setRouteMode] = useState<RouteMode>("car");
+  const [lockedCarRoute, setLockedCarRoute] = useState<LockedRoute | null>(null);
 
   const loadCall = async () => {
     setLoading(true);
@@ -274,19 +294,52 @@ export default function CrewActiveCallPage() {
       : []),
     ...(hubLocation ? [{ key: "hub" as const, label: "H", position: hubLocation, title: "처리 허브", variant: "hub" as const }] : []),
   ];
-  const roadRoutePoints =
-    call?.tracking?.route?.points?.map((point) => ({
+  const incomingRoadRoute = call?.tracking?.route;
+  const incomingRoadRoutePoints =
+    incomingRoadRoute?.points?.map((point) => ({
       lat: point.lat,
       lng: point.lng,
     })) ?? [];
-  const walkPath = crewLocation && routeTarget ? [crewLocation, routeTarget] : [];
-  const mapPath = routeMode === "car" ? roadRoutePoints : walkPath;
+  const routePhase = status === "ARRIVED" || status === "COMPLETED" ? "hub" : "pickup";
+
+  useEffect(() => {
+    setLockedCarRoute(null);
+  }, [pickupRequestId, routePhase]);
+
+  useEffect(() => {
+    if (incomingRoadRoutePoints.length <= 1) return;
+
+    setLockedCarRoute((previous) =>
+      previous ?? {
+        points: incomingRoadRoutePoints,
+        distanceMeters: incomingRoadRoute?.distanceMeters,
+        durationSeconds: incomingRoadRoute?.durationSeconds,
+        distanceLabel: incomingRoadRoute?.distanceLabel,
+        durationLabel: incomingRoadRoute?.durationLabel,
+      },
+    );
+  }, [
+    incomingRoadRoute?.distanceLabel,
+    incomingRoadRoute?.distanceMeters,
+    incomingRoadRoute?.durationLabel,
+    incomingRoadRoute?.durationSeconds,
+    incomingRoadRoutePoints,
+  ]);
+
+  const roadRoutePoints = lockedCarRoute?.points ?? [];
+  const routeDistanceMeters = lockedCarRoute?.distanceMeters ?? incomingRoadRoute?.distanceMeters ?? call?.tracking?.metrics?.crewToPickupMeters;
+  const mapPath = routeMode === "car" ? roadRoutePoints : [];
   const hasRoadRoute = routeMode === "car" && roadRoutePoints.length > 1;
+  const isRouteSearching = routeMode === "car" && !hasRoadRoute && Boolean(crewLocation && routeTarget);
   const canOpenWalkLink = routeMode === "walk" && crewLocation && routeTarget;
 
   const statusText = pickupStatusLabel(status);
-  const crewDistance = call?.tracking?.route?.distanceLabel ?? formatDistance(call?.tracking?.metrics?.crewToPickupMeters);
-  const durationLabel = call?.tracking?.route?.durationLabel ?? "-";
+  const crewDistance = lockedCarRoute?.distanceLabel ?? incomingRoadRoute?.distanceLabel ?? formatDistance(call?.tracking?.metrics?.crewToPickupMeters);
+  const durationLabel = lockedCarRoute?.durationLabel ?? incomingRoadRoute?.durationLabel ?? "-";
+  const calorieLabel = formatCalories(routeDistanceMeters);
+  const walkMetric = [formatDistance(routeDistanceMeters), formatWalkDuration(routeDistanceMeters), calorieLabel]
+    .filter((value) => value && value !== "-")
+    .join(" · ");
   const hubAddress = call?.tracking?.processingCenter?.label ?? "처리 허브 정보가 없습니다.";
   const hubDistance = formatDistance(call?.tracking?.metrics?.crewToProcessingCenterMeters);
   const liveStatus = call?.tracking?.metrics?.locationLive ? "실시간 GPS 반영 중" : "위치 확인 중";
@@ -311,7 +364,7 @@ export default function CrewActiveCallPage() {
   const primaryDetailLink = status === "COMPLETED" ? "/" : "/active";
   const destinationLabel = status === "ARRIVED" || status === "COMPLETED" ? "처리 허브" : "수거지";
   const destinationAddress = destinationLabel === "처리 허브" ? hubAddress : pickupAddress;
-  const navigationMetric = [crewDistance, durationLabel].filter((value) => value && value !== "-").join(" · ");
+  const navigationMetric = routeMode === "walk" ? walkMetric : [crewDistance, durationLabel, calorieLabel].filter((value) => value && value !== "-").join(" · ");
 
   return (
     <CrewPhoneShell>
@@ -343,21 +396,21 @@ export default function CrewActiveCallPage() {
           <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-cloud">
             {mapCenter ? (
               kakaoMapAppKey ? (
-                <div className="relative">
+                <div className="relative isolate overflow-hidden">
                   <KakaoCanvasMap
                     appKey={kakaoMapAppKey}
                     center={mapCenter}
-                    className="h-[430px] w-full"
+                    className="relative z-0 h-[430px] w-full"
                     fitBounds
                     markers={mapMarkers}
                     onMarkerClick={handleMarkerClick}
                     path={mapPath}
-                    routeColor={routeMode === "car" ? "#d33126" : "#64748b"}
-                    routeOpacity={routeMode === "car" ? 0.94 : 0.62}
-                    routeWeight={routeMode === "car" ? 10 : 5}
+                    routeColor={routeMode === "car" ? (hasRoadRoute ? "#d33126" : "#64748b") : "#64748b"}
+                    routeOpacity={routeMode === "car" ? (hasRoadRoute ? 0.94 : 0.58) : 0.62}
+                    routeWeight={routeMode === "car" ? (hasRoadRoute ? 10 : 5) : 5}
                     zoom={mapZoom}
                   />
-                  <div className="absolute right-3 top-3 z-10 flex rounded-full bg-white/95 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                  <div className="absolute right-3 top-3 z-30 flex rounded-full bg-white/95 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
                     {(["car", "walk"] as const).map((mode) => (
                       <button
                         key={mode}
@@ -371,7 +424,7 @@ export default function CrewActiveCallPage() {
                       </button>
                     ))}
                   </div>
-                  <div className="pointer-events-none absolute left-3 right-3 top-14 rounded-[22px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                  <div className="pointer-events-none absolute left-3 right-3 top-14 z-30 rounded-[22px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
                     <div className="flex items-start gap-3">
                       <div className="mt-1 flex flex-col items-center">
                         <span className="h-3 w-3 rounded-full bg-[#2563eb] ring-4 ring-blue-100" />
@@ -386,10 +439,10 @@ export default function CrewActiveCallPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="absolute bottom-3 left-3 right-3 z-10 flex items-center justify-between rounded-[18px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                  <div className="absolute bottom-3 left-3 right-3 z-30 flex items-center justify-between rounded-[18px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
                     <div>
                       <p className="text-xs font-black text-slate-500">
-                        {routeMode === "walk" ? "도보 경로 모드" : hasRoadRoute ? "차량 도로 경로 안내 중" : "차량 도로 경로 계산 중"}
+                        {routeMode === "walk" ? "도보 경로는 카카오맵에서 확인" : hasRoadRoute ? "차량 최단 경로 안내 중" : "경로 탐색 중"}
                       </p>
                       <p className="mt-1 text-sm font-black text-ink">{navigationMetric || "위치 확인 중"}</p>
                     </div>
@@ -403,7 +456,7 @@ export default function CrewActiveCallPage() {
                       </button>
                     ) : (
                       <span className="rounded-full bg-lgred px-3 py-1 text-xs font-black text-white">
-                        {hasRoadRoute ? "LIVE" : "WAIT"}
+                        {hasRoadRoute ? "LIVE" : isRouteSearching ? "SEARCH" : "WAIT"}
                       </span>
                     )}
                   </div>
@@ -450,6 +503,7 @@ export default function CrewActiveCallPage() {
                 <InfoTile label="현재 상태" value={statusText} />
                 <InfoTile label="수거지까지" value={crewDistance} />
                 <InfoTile label="예상 시간" value={durationLabel} />
+                <InfoTile label="예상 칼로리" value={calorieLabel} />
                 <InfoTile label="허브" value={`${hubAddress} · ${hubDistance}`} />
               </div>
             </div>
@@ -493,6 +547,7 @@ export default function CrewActiveCallPage() {
           <div className="mt-3 grid grid-cols-2 gap-3">
             <InfoTile label="진행 상태" value={statusText} />
             <InfoTile label="예상 시간" value={durationLabel} />
+                <InfoTile label="예상 칼로리" value={calorieLabel} />
           </div>
         </section>
 
