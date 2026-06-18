@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, ClipboardList, Star, Truck, UserRound } from "lucide-react";
+import { ArrowLeft, Star, UserRound } from "lucide-react";
 import { CrewBottomNav } from "@/components/CrewBottomNav";
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import {
@@ -22,7 +22,7 @@ const DEFAULT_CREW_PROFILE: CrewProfileSummary = {
   name: "LG 수거 크루",
   photoUrl: null,
   rating: 4.9,
-  reviewSummary: ["친절하고 신속한 수거 진행", "약속 시간 준수 및 안전 처리"],
+  reviewSummary: ["깔끔하고 신속한 수거 진행", "약속 시간을 잘 지키고 안전하게 처리"],
 };
 
 export default function CrewHomePage() {
@@ -123,7 +123,7 @@ export default function CrewHomePage() {
                 {dispatchEnabled ? "수신 중" : "수신 중지"}
               </p>
               <p className="mt-3 text-[12px] font-medium text-slate-500">
-                {dispatchEnabled ? "새 수거 요청을 받을 수 있어요" : "요청 수신이 잠시 멈춘 상태예요"}
+                {dispatchEnabled ? "새 수거 요청을 받을 수 있어요" : "요청 수신을 잠시 멈춘 상태예요"}
               </p>
             </div>
             <button
@@ -157,11 +157,7 @@ export default function CrewHomePage() {
         <section className="mt-4 rounded-[22px] bg-white px-5 py-5 shadow-[0_6px_18px_rgba(15,23,42,0.05)]">
           <div className="flex items-start gap-4">
             {profile.photoUrl ? (
-              <img
-                alt={profile.name}
-                className="h-16 w-16 rounded-[22px] object-cover"
-                src={profile.photoUrl}
-              />
+              <img alt={profile.name} className="h-16 w-16 rounded-[22px] object-cover" src={profile.photoUrl} />
             ) : (
               <div className="flex h-16 w-16 items-center justify-center rounded-[22px] bg-lgred/10 text-lgred">
                 <UserRound size={28} />
@@ -192,7 +188,7 @@ export default function CrewHomePage() {
             <div className="mt-3 space-y-2">
               {profile.reviewSummary.map((summary, index) => (
                 <p key={`${summary}-${index}`} className="text-[13px] font-semibold leading-6 text-ink">
-                  • {summary}
+                  · {summary}
                 </p>
               ))}
             </div>

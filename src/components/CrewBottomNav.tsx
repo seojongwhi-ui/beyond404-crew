@@ -29,7 +29,7 @@ const navItems = [
     label: "완료",
     match: (pathname: string) => pathname === "/completed",
   },
-];
+] as const;
 
 export function CrewBottomNav() {
   const pathname = usePathname();

@@ -370,215 +370,216 @@ export default function CrewActiveCallPage() {
 
   return (
     <CrewPhoneShell>
-      <div className="phone-scroll flex min-h-0 flex-1 flex-col overflow-auto bg-cloud px-5 pb-6 pt-4">
-        <header className="flex items-start justify-between">
-          <button
-            className="flex h-11 w-11 items-center justify-center rounded-full border border-white bg-white text-ink shadow-sm"
-            onClick={() => router.push(`/calls/${pickupRequestId}`)}
-            type="button"
-          >
-            <ArrowLeft size={18} />
-          </button>
-          <button
-            className="flex h-11 items-center gap-2 rounded-full border border-white bg-white px-4 text-sm font-black text-slate-700 shadow-sm"
-            onClick={() => router.push("/")}
-            type="button"
-          >
-            <Home size={14} />
-            홈
-          </button>
-        </header>
+      <div className="relative flex min-h-0 flex-1 flex-col bg-cloud">
+        <div className="phone-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-32 pt-4">
+          <header className="flex items-start justify-between">
+            <button
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-white bg-white text-ink shadow-sm"
+              onClick={() => router.push(`/calls/${pickupRequestId}`)}
+              type="button"
+            >
+              <ArrowLeft size={18} />
+            </button>
+            <button
+              className="flex h-11 items-center gap-2 rounded-full border border-white bg-white px-4 text-sm font-black text-slate-700 shadow-sm"
+              onClick={() => router.push("/")}
+              type="button"
+            >
+              <Home size={14} />
+              홈
+            </button>
+          </header>
 
-        <section className="mt-5 rounded-[24px] bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm font-black text-ink">
-            <Navigation size={16} className="text-lgred" />
-            이동 지도
-          </div>
+          <section className="mt-5 rounded-[24px] bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-sm font-black text-ink">
+              <Navigation size={16} className="text-lgred" />
+              이동 지도
+            </div>
 
-          <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-cloud">
-            {mapCenter ? (
-              kakaoMapAppKey ? (
-                <div className="relative isolate overflow-hidden">
-                  <KakaoCanvasMap
-                    appKey={kakaoMapAppKey}
-                    center={mapCenter}
-                    className="relative z-0 h-[430px] w-full"
-                    fitBounds
-                    markers={mapMarkers}
-                    onMarkerClick={handleMarkerClick}
-                    path={mapPath}
-                    routeColor={routeMode === "car" ? (hasRoadRoute ? "#d33126" : "#64748b") : "#64748b"}
-                    routeOpacity={routeMode === "car" ? (hasRoadRoute ? 0.94 : 0.58) : 0.62}
-                    routeWeight={routeMode === "car" ? (hasRoadRoute ? 10 : 5) : 5}
-                    zoom={mapZoom}
-                  />
+            <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-cloud">
+              {mapCenter ? (
+                kakaoMapAppKey ? (
+                  <div className="relative isolate overflow-hidden">
+                    <KakaoCanvasMap
+                      appKey={kakaoMapAppKey}
+                      center={mapCenter}
+                      className="relative z-0 h-[430px] w-full"
+                      fitBounds
+                      markers={mapMarkers}
+                      onMarkerClick={handleMarkerClick}
+                      path={mapPath}
+                      routeColor={routeMode === "car" ? (hasRoadRoute ? "#d33126" : "#64748b") : "#64748b"}
+                      routeOpacity={routeMode === "car" ? (hasRoadRoute ? 0.94 : 0.58) : 0.62}
+                      routeWeight={routeMode === "car" ? (hasRoadRoute ? 10 : 5) : 5}
+                      zoom={mapZoom}
+                    />
 
-                  <div className="absolute right-3 top-3 z-30 flex rounded-full bg-white/95 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
-                    {(["car", "walk"] as const).map((mode) => (
-                      <button
-                        key={mode}
-                        className={`rounded-full px-3 py-1.5 text-xs font-black transition ${
-                          routeMode === mode ? "bg-lgred text-white" : "text-slate-500"
-                        }`}
-                        onClick={() => setRouteMode(mode)}
-                        type="button"
-                      >
-                        {mode === "car" ? "차량" : "도보"}
-                      </button>
-                    ))}
-                  </div>
+                    <div className="absolute right-3 top-3 z-30 flex rounded-full bg-white/95 p-1 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                      {(["car", "walk"] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          className={`rounded-full px-3 py-1.5 text-xs font-black transition ${
+                            routeMode === mode ? "bg-lgred text-white" : "text-slate-500"
+                          }`}
+                          onClick={() => setRouteMode(mode)}
+                          type="button"
+                        >
+                          {mode === "car" ? "차량" : "도보"}
+                        </button>
+                      ))}
+                    </div>
 
-                  <div className="pointer-events-none absolute left-3 right-3 top-14 z-30 rounded-[22px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-1 flex flex-col items-center">
-                        <span className="h-3 w-3 rounded-full bg-[#2563eb] ring-4 ring-blue-100" />
-                        <span className="my-1 h-7 w-px border-l border-dotted border-slate-400" />
-                        <MapPin size={18} className="text-[#d33126]" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-black text-blue-600">크루 현재 위치</p>
-                        <div className="my-2 h-px bg-slate-200" />
-                        <p className="text-lg font-black text-ink">{destinationLabel}</p>
-                        <p className="mt-1 line-clamp-2 text-xs font-bold leading-5 text-slate-500">{destinationAddress}</p>
+                    <div className="pointer-events-none absolute left-3 right-3 top-14 z-30 rounded-[22px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                      <div className="flex items-start gap-3">
+                        <div className="mt-1 flex flex-col items-center">
+                          <span className="h-3 w-3 rounded-full bg-[#2563eb] ring-4 ring-blue-100" />
+                          <span className="my-1 h-7 w-px border-l border-dotted border-slate-400" />
+                          <MapPin size={18} className="text-[#d33126]" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-xs font-black text-blue-600">크루 현재 위치</p>
+                          <div className="my-2 h-px bg-slate-200" />
+                          <p className="text-lg font-black text-ink">{destinationLabel}</p>
+                          <p className="mt-1 line-clamp-2 text-xs font-bold leading-5 text-slate-500">{destinationAddress}</p>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  <div className="absolute bottom-3 left-3 right-3 z-30 flex items-center justify-between rounded-[18px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                    <div className="absolute bottom-3 left-3 right-3 z-30 flex items-center justify-between rounded-[18px] bg-white/95 px-4 py-3 shadow-[0_8px_24px_rgba(15,23,42,0.14)] backdrop-blur">
+                      <div>
+                        <p className="text-xs font-black text-slate-500">
+                          {routeMode === "walk"
+                            ? "도보 경로는 카카오맵에서 확인"
+                            : hasRoadRoute
+                              ? "차량 최단 경로 안내 중"
+                              : isRouteSearching
+                                ? "경로 탐색 중"
+                                : "경로 준비 중"}
+                        </p>
+                        <p className="mt-1 text-sm font-black text-ink">{navigationMetric || "위치 확인 중"}</p>
+                      </div>
+                      {canOpenWalkLink && crewLocation && routeTarget ? (
+                        <button
+                          className="rounded-full bg-ink px-3 py-1 text-xs font-black text-white"
+                          onClick={() =>
+                            window.open(kakaoWalkRouteUrl(crewLocation, routeTarget), "_blank", "noopener,noreferrer")
+                          }
+                          type="button"
+                        >
+                          카카오맵 도보 길찾기
+                        </button>
+                      ) : (
+                        <span className="rounded-full bg-lgred px-3 py-1 text-xs font-black text-white">
+                          {hasRoadRoute ? "LIVE" : isRouteSearching ? "SEARCH" : "WAIT"}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex h-[430px] w-full items-center justify-center px-6 text-center">
                     <div>
-                      <p className="text-xs font-black text-slate-500">
-                        {routeMode === "walk"
-                          ? "도보 경로는 카카오맵에서 확인"
-                          : hasRoadRoute
-                            ? "차량 최단 경로 안내 중"
-                            : isRouteSearching
-                              ? "경로 탐색 중"
-                              : "경로 준비 중"}
+                      <p className="text-sm font-black text-ink">Kakao Maps 연결이 필요합니다</p>
+                      <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
+                        `NEXT_PUBLIC_KAKAO_MAP_APP_KEY` 환경변수를 설정하면 지도를 표시할 수 있습니다.
                       </p>
-                      <p className="mt-1 text-sm font-black text-ink">{navigationMetric || "위치 확인 중"}</p>
                     </div>
-                    {canOpenWalkLink && crewLocation && routeTarget ? (
-                      <button
-                        className="rounded-full bg-ink px-3 py-1 text-xs font-black text-white"
-                        onClick={() =>
-                          window.open(kakaoWalkRouteUrl(crewLocation, routeTarget), "_blank", "noopener,noreferrer")
-                        }
-                        type="button"
-                      >
-                        카카오맵 도보 길찾기
-                      </button>
-                    ) : (
-                      <span className="rounded-full bg-lgred px-3 py-1 text-xs font-black text-white">
-                        {hasRoadRoute ? "LIVE" : isRouteSearching ? "SEARCH" : "WAIT"}
-                      </span>
-                    )}
                   </div>
-                </div>
+                )
               ) : (
                 <div className="flex h-[430px] w-full items-center justify-center px-6 text-center">
                   <div>
-                    <p className="text-sm font-black text-ink">Kakao Maps 연결이 필요합니다</p>
+                    <p className="text-sm font-black text-ink">이동 지도를 표시할 수 없습니다</p>
                     <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
-                      `NEXT_PUBLIC_KAKAO_MAP_APP_KEY` 환경변수를 설정하면 지도를 표시할 수 있습니다.
+                      수거지 좌표 또는 크루 위치가 확인되면 경로가 표시됩니다.
                     </p>
                   </div>
                 </div>
-              )
-            ) : (
-              <div className="flex h-[430px] w-full items-center justify-center px-6 text-center">
-                <div>
-                  <p className="text-sm font-black text-ink">이동 지도를 표시할 수 없습니다</p>
-                  <p className="mt-2 text-xs font-semibold leading-5 text-slate-500">
-                    수거지 좌표 또는 크루 위치가 확인되면 경로가 표시됩니다.
-                  </p>
+              )}
+            </div>
+
+            {selectedPickupOpen ? (
+              <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+                <div className="flex items-start justify-between gap-3 px-5 pb-2 pt-5">
+                  <div>
+                    <p className="text-[28px] font-black leading-none text-ink">
+                      {call ? applianceName(call) : "수거지 정보"}
+                    </p>
+                    <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">{pickupAddress}</p>
+                    <p className="mt-2 text-sm font-semibold leading-6 text-slate-400">{detailAddress}</p>
+                  </div>
+                  <button
+                    className="flex h-10 w-10 items-center justify-center rounded-full bg-cloud text-slate-500"
+                    onClick={closePickupCard}
+                    type="button"
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
+                <div className="grid grid-cols-2 gap-3 px-5 pb-5 pt-3">
+                  <InfoTile label="현재 상태" value={statusText} />
+                  <InfoTile label="수거지까지" value={crewDistance} />
+                  <InfoTile label="예상 시간" value={durationLabel} />
+                  <InfoTile label="예상 칼로리" value={calorieLabel} />
+                  <InfoTile label="허브" value={`${hubAddress} · ${hubDistance}`} />
+                </div>
+              </div>
+            ) : (
+              <div className="mt-4 grid grid-cols-1 gap-3">
+                <InfoTile label="수거지 주소" value={pickupAddress} />
+                <InfoTile label="실시간 상태" value={liveStatus} />
+                <InfoTile label="위치 갱신 시각" value={formatDateTime(call?.tracking?.driverLocation?.updatedAt)} />
               </div>
             )}
-          </div>
+          </section>
 
-          {selectedPickupOpen ? (
-            <div className="mt-4 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-              <div className="flex items-start justify-between gap-3 px-5 pb-2 pt-5">
-                <div>
-                  <p className="text-[28px] font-black leading-none text-ink">
-                    {call ? applianceName(call) : "수거지 정보"}
-                  </p>
-                  <p className="mt-3 text-sm font-semibold leading-6 text-slate-500">{pickupAddress}</p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-400">{detailAddress}</p>
-                </div>
-                <button
-                  className="flex h-10 w-10 items-center justify-center rounded-full bg-cloud text-slate-500"
-                  onClick={closePickupCard}
-                  type="button"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-3 px-5 pb-5 pt-3">
-                <InfoTile label="현재 상태" value={statusText} />
-                <InfoTile label="수거지까지" value={crewDistance} />
-                <InfoTile label="예상 시간" value={durationLabel} />
-                <InfoTile label="예상 칼로리" value={calorieLabel} />
-                <InfoTile label="허브" value={`${hubAddress} · ${hubDistance}`} />
-              </div>
+          <section className="mt-4 rounded-[24px] bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2 text-sm font-black text-ink">
+              <Truck size={16} className="text-lgred" />
+              진행 처리
             </div>
-          ) : (
-            <div className="mt-4 grid grid-cols-1 gap-3">
-              <InfoTile label="수거지 주소" value={pickupAddress} />
-              <InfoTile label="실시간 상태" value={liveStatus} />
-              <InfoTile label="위치 갱신 시각" value={formatDateTime(call?.tracking?.driverLocation?.updatedAt)} />
+
+            <div className="mt-4 space-y-3">
+              <ProgressActionCard
+                active={canDepart}
+                disabled={loading || !canDepart}
+                icon={<Truck size={18} />}
+                label="수거지 출발"
+                description="콜 수락 후 수거지로 이동을 시작할 때 눌러 주세요."
+                onClick={() => void runAction("depart")}
+              />
+              <ProgressActionCard
+                active={canComplete}
+                disabled={loading || !canComplete}
+                icon={<Warehouse size={18} />}
+                label="처리 완료"
+                description="수거 후 허브 전달과 처리 완료를 등록합니다."
+                onClick={() => void runAction("complete")}
+              />
             </div>
-          )}
-        </section>
+          </section>
 
-        <section className="mt-4 rounded-[24px] bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-2 text-sm font-black text-ink">
-            <Truck size={16} className="text-lgred" />
-            진행 처리
-          </div>
+          <section className="mt-4 rounded-[24px] bg-white p-4 shadow-sm">
+            <div className="text-sm font-black text-ink">현재 진행 안내</div>
+            <div className="mt-3 grid grid-cols-2 gap-3">
+              <InfoTile label="진행 상태" value={statusText} />
+              <InfoTile label="예상 시간" value={durationLabel} />
+            </div>
+          </section>
+        </div>
 
-          <div className="mt-4 space-y-3">
-            <ProgressActionCard
-              active={canDepart}
-              disabled={loading || !canDepart}
-              icon={<Truck size={18} />}
-              label="수거지 출발"
-              description="콜 수락 후 수거지로 이동을 시작할 때 눌러 주세요."
-              onClick={() => void runAction("depart")}
-            />
-            <ProgressActionCard
-              active={canComplete}
-              disabled={loading || !canComplete}
-              icon={<Warehouse size={18} />}
-              label="처리 완료"
-              description="수거 후 허브 전달과 처리 완료를 등록합니다."
-              onClick={() => void runAction("complete")}
-            />
-          </div>
-        </section>
+        <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] border-t border-slate-200 bg-white/95 px-5 pb-5 pt-4 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur">
+          <button
+            className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-white text-sm font-black text-slate-700"
+            onClick={() => router.push("/active")}
+            type="button"
+          >
+            목록으로 돌아가기
+          </button>
 
-        <section className="mt-4 rounded-[24px] bg-white p-4 shadow-sm">
-          <div className="text-sm font-black text-ink">현재 진행 안내</div>
-          <div className="mt-3 grid grid-cols-2 gap-3">
-            <InfoTile label="진행 상태" value={statusText} />
-            <InfoTile label="예상 시간" value={durationLabel} />
-            <InfoTile label="예상 칼로리" value={calorieLabel} />
-          </div>
-        </section>
-
-        {message ? (
-          <div className="mt-4 rounded-[18px] bg-white px-4 py-4 text-sm font-bold leading-6 text-slate-600 shadow-sm">
-            {message}
-          </div>
-        ) : null}
-
-        <button
-          className="mt-4 flex h-14 w-full items-center justify-center gap-2 rounded-[18px] border border-slate-200 bg-white text-base font-black text-slate-700 shadow-sm"
-          onClick={() => router.push("/active")}
-          type="button"
-        >
-          목록으로 돌아가기
-        </button>
+          {message ? (
+            <div className="mt-3 rounded-[16px] bg-cloud px-4 py-3 text-sm font-bold leading-6 text-slate-600">{message}</div>
+          ) : null}
+        </div>
       </div>
     </CrewPhoneShell>
   );

@@ -8,7 +8,6 @@ import {
   formatDistance,
   formatRequestTime,
   pickupTypeLabel,
-  statusLabel,
   type CrewCall,
 } from "@/lib/crew-api";
 import { ArrowLeft, Check, Home, MapPin, PackageCheck, ShieldCheck, Truck, Users, Warehouse } from "lucide-react";
@@ -72,7 +71,7 @@ export default function CrewCallDetailPage() {
           <header className="flex items-start justify-between">
             <button
               className="flex h-11 w-11 items-center justify-center rounded-full border border-white bg-white text-ink shadow-sm"
-              onClick={() => router.push("/")}
+              onClick={() => router.push("/calls")}
               type="button"
             >
               <ArrowLeft size={18} />
@@ -144,7 +143,7 @@ export default function CrewCallDetailPage() {
 
           {call?.crewProfile ? (
             <section className="mt-4 rounded-[24px] bg-white p-4 shadow-sm">
-              <p className="text-sm font-black text-ink">예정 크루 정보</p>
+              <p className="text-sm font-black text-ink">배정 크루 정보</p>
               <div className="mt-3 rounded-[18px] bg-cloud px-4 py-4">
                 <p className="text-base font-black text-ink">{call.crewProfile.name}</p>
                 <p className="mt-1 text-sm font-semibold text-slate-500">평점 {call.crewProfile.rating.toFixed(1)}</p>
@@ -181,7 +180,7 @@ export default function CrewCallDetailPage() {
 
           <Link
             className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-white text-sm font-black text-slate-700"
-            href="/"
+            href="/calls"
           >
             목록으로 돌아가기
           </Link>
