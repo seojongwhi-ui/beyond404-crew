@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 export type NearbyCrew = {
   crewId: number | null;
@@ -122,6 +122,11 @@ export type CrewCall = {
       recordedAt: string;
       accuracyMeters?: number | null;
       source?: string | null;
+    }[];
+    events?: {
+      eventType: string;
+      message: string;
+      createdAt: string;
     }[];
   } | null;
   settlement?: {
@@ -295,6 +300,12 @@ export function formatRequestTime(requestedAt?: string | null, scheduledAt?: str
   const minute = String(parsed.getMinutes()).padStart(2, "0");
 
   return `${month}.${day} ${hour}:${minute}`;
+}
+
+export function formatCallTime(call: CrewCall) {
+  const latestEventAt = call.tracking?.events?.[call.tracking.events.length - 1]?.createdAt;
+  const driverUpdatedAt = call.tracking?.driverLocation?.updatedAt;
+  return formatRequestTime(latestEventAt ?? driverUpdatedAt ?? call.pickupRequest?.requestedAt, call.pickupRequest?.scheduledAt);
 }
 
 export function pickupTypeLabel(value?: string | null) {

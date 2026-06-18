@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "LG SwapIt Crew",
-  description: "LG SwapIt 수거 크루용 운영 앱",
+  description: "LG SwapIt 수거 크루 운영 앱",
 };
 
 export default function RootLayout({
