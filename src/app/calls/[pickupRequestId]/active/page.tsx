@@ -490,13 +490,6 @@ export default function CrewActiveCallPage() {
             </div>
           </section>
 
-          <section className="mt-4 rounded-[22px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
-            <div className="text-sm font-black text-ink">현재 진행 안내</div>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              <InfoTile label="진행 상태" value={statusText} />
-              <InfoTile label="예상 시간" value={durationLabel} />
-            </div>
-          </section>
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] border-t border-slate-200 bg-white/95 px-5 pb-5 pt-4 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur">

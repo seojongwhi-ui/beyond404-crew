@@ -181,14 +181,18 @@ function StatusStat({ label, value }: { label: string; value: string }) {
 }
 
 function resolveCrewProfile(calls: CrewCall[]): CrewProfileSummary {
-  for (const call of calls) {
-    if (call.crewProfile) {
-      return {
-        name: DEFAULT_CREW_NAME,
-        photoUrl: DEFAULT_CREW_PROFILE.photoUrl,
-        rating: call.crewProfile.rating || DEFAULT_CREW_PROFILE.rating,
-      };
-    }
+  const ratings = calls
+    .map((call) => call.crewProfile?.rating)
+    .filter((rating): rating is number => typeof rating === "number" && Number.isFinite(rating) && rating > 0);
+
+  if (ratings.length > 0) {
+    const averageRating = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
+
+    return {
+      name: DEFAULT_CREW_NAME,
+      photoUrl: DEFAULT_CREW_PROFILE.photoUrl,
+      rating: Number(averageRating.toFixed(1)),
+    };
   }
 
   return DEFAULT_CREW_PROFILE;
