@@ -102,6 +102,11 @@ export default function CrewHomePage() {
   const primaryPendingCall = pendingCalls[0] ?? null;
 
   const acceptFromHome = async (call: CrewCall) => {
+    if (primaryActiveCall) {
+      setErrorMessage("진행 중인 수거를 먼저 완료한 뒤 새 요청을 수락할 수 있어요.");
+      return;
+    }
+
     const pickupRequestId = getPickupRequestId(call);
     if (!pickupRequestId) return;
 
@@ -271,6 +276,7 @@ export default function CrewHomePage() {
                 return (
                   <CompactCallCard
                     accepting={acceptingId === pickupRequestId}
+                    blocked={Boolean(primaryActiveCall)}
                     call={call}
                     key={`pending-${call.id}`}
                     onAccept={() => void acceptFromHome(call)}
@@ -288,7 +294,7 @@ export default function CrewHomePage() {
 
 function ProfilePill({ profile }: { profile: CrewProfileSummary }) {
   return (
-    <div className="flex shrink-0 items-center gap-2 rounded-full bg-white px-2.5 py-2 shadow-sm">
+    <div className="flex shrink-0 items-center gap-2 rounded-[14px] bg-white px-2.5 py-2 shadow-sm">
       {profile.photoUrl ? (
         <img alt={profile.name} className="h-8 w-8 rounded-full object-cover" src={profile.photoUrl} />
       ) : (
@@ -338,6 +344,7 @@ function ActiveCallCard({ call }: { call: CrewCall }) {
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2">
+        <InfoTile label="예상 정산" value={getPayoutLabel(call)} highlight />
         <InfoTile label="예상 이동" value={getDurationLabel(call)} />
         <InfoTile label="남은 거리" value={getDistanceLabel(call)} />
       </div>
@@ -393,7 +400,7 @@ function PriorityPendingCard({
         <div className="mt-3 rounded-[16px] bg-slate-50 px-3 py-3">
           <p className="text-[10px] font-bold text-slate-400">선택 구매 제품</p>
           <p className="mt-1 truncate text-[13px] font-bold text-ink">{call.selectedProduct.productName}</p>
-          <p className="mt-1 text-[12px] font-bold text-lgred">{formatInr(call.selectedProduct.productPrice)}</p>
+          <p className="mt-1 text-[12px] font-bold text-lgred">{formatWon(call.selectedProduct.productPrice)}</p>
         </div>
       ) : null}
 
@@ -420,10 +427,12 @@ function PriorityPendingCard({
 
 function CompactCallCard({
   accepting,
+  blocked = false,
   call,
   onAccept,
 }: {
   accepting: boolean;
+  blocked?: boolean;
   call: CrewCall;
   onAccept: () => void;
 }) {
@@ -458,13 +467,18 @@ function CompactCallCard({
         </div>
         <button
           className="h-9 shrink-0 rounded-full bg-lgred px-4 text-[12px] font-bold text-white disabled:bg-slate-300"
-          disabled={accepting}
+          disabled={accepting || blocked}
           onClick={onAccept}
           type="button"
         >
-          {accepting ? "수락 중" : "수락"}
+          {blocked ? "진행 중" : accepting ? "수락 중" : "수락"}
         </button>
       </div>
+      {blocked ? (
+        <p className="mt-3 rounded-[12px] bg-slate-50 px-3 py-2 text-[11px] font-semibold leading-4 text-slate-500">
+          현재 수거를 처리 완료하면 새 요청을 수락할 수 있어요.
+        </p>
+      ) : null}
     </article>
   );
 }
@@ -546,12 +560,12 @@ function getDurationLabel(call: CrewCall) {
 }
 
 function getPayoutLabel(call: CrewCall) {
-  return call.settlement?.totalAmount == null ? "확인 중" : formatInr(call.settlement.totalAmount);
+  return call.settlement?.totalAmount == null ? "확인 중" : formatWon(call.settlement.totalAmount);
 }
 
-function formatInr(value: number | null | undefined) {
+function formatWon(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "확인 중";
-  return `₹${Math.round(value).toLocaleString("en-IN")}`;
+  return `${Math.round(value).toLocaleString("ko-KR")}원`;
 }
 
 function getCurrentCrewLocation() {
