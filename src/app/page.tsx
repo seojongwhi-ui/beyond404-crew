@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeft, CheckCircle2, ClipboardList, Home, Truck } from "lucide-react";
-import { CrewBottomNav } from "@/components/CrewBottomNav";
+import { ArrowLeft, CheckCircle2, ClipboardList, Truck, UserRound } from "lucide-react";
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import {
   fetchActiveCrewCalls,
@@ -73,7 +72,7 @@ export default function CrewHomePage() {
 
   return (
     <CrewPhoneShell>
-      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-28 pt-4 phone-scroll">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-4 phone-scroll">
         <header className="grid grid-cols-[40px_1fr_64px] items-center">
           <button
             className="flex h-10 w-10 items-center justify-center rounded-full text-ink transition hover:bg-white"
@@ -86,9 +85,13 @@ export default function CrewHomePage() {
             <p className="text-[13px] font-extrabold leading-none text-lgred">LG ThinQ</p>
             <p className="mt-1 text-[12px] font-semibold text-slate-600">Crew Home</p>
           </div>
-          <button className="text-right text-[12px] font-bold text-slate-600" type="button">
-            로그아웃
-          </button>
+          <Link
+            aria-label="내정보"
+            className="ml-auto flex h-10 w-10 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm"
+            href="/profile"
+          >
+            <UserRound size={18} strokeWidth={2.2} />
+          </Link>
         </header>
 
         <section className="mt-7">
@@ -172,7 +175,6 @@ export default function CrewHomePage() {
           </div>
         ) : null}
       </div>
-      <CrewBottomNav />
     </CrewPhoneShell>
   );
 }

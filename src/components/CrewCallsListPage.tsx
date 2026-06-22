@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Bell, ChevronRight, RefreshCw, type LucideIcon } from "lucide-react";
-import { CrewBottomNav } from "@/components/CrewBottomNav";
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import {
   applianceName,
@@ -102,7 +101,7 @@ export function CrewCallsListPage({
           ) : null}
         </div>
 
-        <section className="mt-4 min-h-0 flex-1 overflow-y-auto pb-28 pr-1 phone-scroll">
+        <section className="mt-4 min-h-0 flex-1 overflow-y-auto pb-6 pr-1 phone-scroll">
           <div className="space-y-3">
             {calls.length > 0 ? (
               calls.map((call) => {
@@ -153,7 +152,6 @@ export function CrewCallsListPage({
           </div>
         </section>
       </div>
-      <CrewBottomNav />
     </CrewPhoneShell>
   );
 }
