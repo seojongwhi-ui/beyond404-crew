@@ -4,6 +4,7 @@ import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import {
   acceptCrewCall,
   applianceName,
+  fetchActiveCrewCalls,
   fetchCrewCallDetail,
   formatRequestTime,
   pickupTypeLabel,
@@ -30,6 +31,7 @@ export default function CrewCallDetailPage() {
   const [call, setCall] = useState<CrewCall | null>(null);
   const [loading, setLoading] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
+  const [hasBlockingActiveCall, setHasBlockingActiveCall] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -37,8 +39,17 @@ export default function CrewCallDetailPage() {
       setLoadFailed(false);
 
       try {
-        const data = await fetchCrewCallDetail(pickupRequestId);
+        const [data, activeCalls] = await Promise.all([
+          fetchCrewCallDetail(pickupRequestId),
+          fetchActiveCrewCalls().catch(() => []),
+        ]);
         setCall(data);
+        setHasBlockingActiveCall(
+          activeCalls.some((activeCall) => {
+            const activePickupRequestId = activeCall.pickupRequest?.pickupRequestId ?? activeCall.id;
+            return activePickupRequestId !== pickupRequestId && isActivePickupStatus(activeCall.pickupRequest?.status);
+          }),
+        );
       } catch {
         setLoadFailed(true);
       } finally {
@@ -51,13 +62,15 @@ export default function CrewCallDetailPage() {
 
   const status = call?.pickupRequest?.status ?? "";
   const hasAcceptedStatus = ["ASSIGNED", "IN_PROGRESS", "ARRIVED", "COMPLETED"].includes(status);
-  const canAccept = Boolean(call) && !hasAcceptedStatus;
+  const isAcceptableStatus = Boolean(call) && !hasAcceptedStatus;
+  const canAccept = isAcceptableStatus && !hasBlockingActiveCall;
 
   const actionLabel = useMemo(() => {
+    if (hasBlockingActiveCall) return "진행 중인 수거가 있어요";
     if (loading) return "콜 수락 처리 중...";
     if (status === "CONFIRMED") return "예약 콜 수락하기";
     return "콜 수락하기";
-  }, [loading, status]);
+  }, [hasBlockingActiveCall, loading, status]);
 
   const getCurrentCrewLocation = () =>
     new Promise<CrewLocationPayload | undefined>((resolve) => {
@@ -114,6 +127,8 @@ export default function CrewCallDetailPage() {
     });
 
   const acceptCall = async () => {
+    if (!canAccept) return;
+
     setLoading(true);
     try {
       const crewLocation = await getCurrentCrewLocation();
@@ -183,10 +198,16 @@ export default function CrewCallDetailPage() {
         </div>
 
         <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] border-t border-slate-200 bg-white/95 px-5 pb-5 pt-4 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur">
-          {canAccept ? (
+          {hasBlockingActiveCall && isAcceptableStatus ? (
+            <p className="mb-3 rounded-[14px] bg-slate-50 px-4 py-3 text-[12px] font-semibold leading-5 text-slate-500">
+              진행 중인 수거를 처리 완료한 뒤 새 요청을 수락할 수 있어요.
+            </p>
+          ) : null}
+
+          {isAcceptableStatus ? (
             <button
               className="flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-lgred text-sm font-black text-white shadow-[0_14px_26px_rgba(166,15,59,0.22)] disabled:bg-slate-300"
-              disabled={loading || !call}
+              disabled={loading || !call || !canAccept}
               onClick={() => void acceptCall()}
               type="button"
             >
@@ -196,7 +217,7 @@ export default function CrewCallDetailPage() {
           ) : null}
 
           <Link
-            className={`${canAccept ? "mt-3" : ""} flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-white text-sm font-black text-slate-700`}
+            className={`${isAcceptableStatus ? "mt-3" : ""} flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-white text-sm font-black text-slate-700`}
             href="/calls"
           >
             목록으로 돌아가기
@@ -253,4 +274,8 @@ function statusLabel(status?: string) {
     default:
       return "수락 대기";
   }
+}
+
+function isActivePickupStatus(status?: string | null) {
+  return status === "ASSIGNED" || status === "IN_PROGRESS" || status === "ARRIVED";
 }

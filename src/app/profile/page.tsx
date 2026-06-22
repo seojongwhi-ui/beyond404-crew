@@ -128,7 +128,7 @@ export default function CrewProfilePage() {
                 <p className="mt-1 text-[20px] font-bold leading-tight text-ink">총 {summary.totalCompleted}건 완료</p>
               </div>
             </div>
-            <p className="mt-4 text-[30px] font-bold leading-none text-lgred">{formatInr(summary.totalEarnings)}</p>
+            <p className="mt-4 text-[30px] font-bold leading-none text-lgred">{formatWon(summary.totalEarnings)}</p>
             <p className="mt-2 text-[12px] font-semibold text-slate-500">처리 완료된 건의 정산 금액만 합산했어요.</p>
           </section>
 
@@ -253,7 +253,7 @@ function getCompletedAt(call: CrewCall) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function formatInr(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return "₹0";
-  return `₹${Math.round(value).toLocaleString("en-IN")}`;
+function formatWon(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "0원";
+  return `${Math.round(value).toLocaleString("ko-KR")}원`;
 }
