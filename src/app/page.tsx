@@ -1,14 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Star, UserRound } from "lucide-react";
-import { CrewBottomNav } from "@/components/CrewBottomNav";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronRight, Clock3, MapPin, PackageCheck, Star, Truck, UserRound } from "lucide-react";
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import { CrewTopBar } from "@/components/CrewTopBar";
 import {
+  acceptCrewCall,
+  applianceName,
   fetchActiveCrewCalls,
   fetchCompletedCrewCalls,
   fetchPendingCrewCalls,
+  formatCallTime,
+  formatDistance,
+  pickupTypeLabel,
+  sortCallsByLatest,
+  statusLabel,
   type CrewCall,
 } from "@/lib/crew-api";
 
@@ -18,6 +26,15 @@ type CrewProfileSummary = {
   rating: number;
 };
 
+type CrewLocationPayload = {
+  lat: number;
+  lng: number;
+  heading?: number;
+  speed?: number;
+  accuracy?: number;
+  capturedAt?: number;
+};
+
 const DEFAULT_CREW_NAME = "무함마드";
 
 const DEFAULT_CREW_PROFILE: CrewProfileSummary = {
@@ -25,77 +42,156 @@ const DEFAULT_CREW_PROFILE: CrewProfileSummary = {
   photoUrl: "/crew-muhammad.png",
   rating: 4.9,
 };
+const REFRESH_PULL_THRESHOLD = 64;
 
 export default function CrewHomePage() {
+  const router = useRouter();
   const [pendingCalls, setPendingCalls] = useState<CrewCall[]>([]);
   const [activeCalls, setActiveCalls] = useState<CrewCall[]>([]);
   const [completedCalls, setCompletedCalls] = useState<CrewCall[]>([]);
   const [dispatchEnabled, setDispatchEnabled] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
+  const [acceptingId, setAcceptingId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
 
   const loadSummary = async () => {
     setLoading(true);
     setErrorMessage(null);
 
-    try {
-      const [pending, active, completed] = await Promise.all([
-        fetchPendingCrewCalls(),
-        fetchActiveCrewCalls(),
-        fetchCompletedCrewCalls(),
-      ]);
+    const [pendingResult, activeResult, completedResult] = await Promise.allSettled([
+      fetchPendingCrewCalls(),
+      fetchActiveCrewCalls(),
+      fetchCompletedCrewCalls(),
+    ]);
 
-      setPendingCalls(pending);
-      setActiveCalls(active);
-      setCompletedCalls(completed);
-    } catch {
-      setErrorMessage("배차 현황을 불러오지 못했습니다. 백엔드 연결 상태를 확인해 주세요.");
-    } finally {
-      setLoading(false);
+    if (pendingResult.status === "fulfilled") {
+      setPendingCalls(sortCallsByLatest(pendingResult.value));
     }
+
+    if (activeResult.status === "fulfilled") {
+      setActiveCalls(sortCallsByLatest(activeResult.value));
+    }
+
+    if (completedResult.status === "fulfilled") {
+      setCompletedCalls(sortCallsByLatest(completedResult.value));
+    }
+
+    const failedCount = [pendingResult, activeResult, completedResult].filter((result) => result.status === "rejected").length;
+    if (failedCount === 3) {
+      setErrorMessage("수거 요청을 불러오지 못했어요. 백엔드 연결 상태를 확인해 주세요.");
+    } else if (failedCount > 0) {
+      setErrorMessage("일부 요청 정보가 늦게 들어오고 있어요. 아래로 당기면 다시 확인할 수 있어요.");
+    }
+
+    setLoading(false);
   };
 
   useEffect(() => {
     void loadSummary();
   }, []);
 
-  useEffect(() => {
-    if (!dispatchEnabled) {
-      return undefined;
-    }
-
-    const timer = window.setInterval(() => {
-      void loadSummary();
-    }, 5000);
-
-    return () => window.clearInterval(timer);
-  }, [dispatchEnabled]);
-
   const profile = useMemo(
     () => resolveCrewProfile([...activeCalls, ...pendingCalls, ...completedCalls]),
     [activeCalls, completedCalls, pendingCalls],
   );
 
-  const totalCalls = pendingCalls.length + activeCalls.length + completedCalls.length;
+  const primaryActiveCall = activeCalls[0] ?? null;
+  const primaryPendingCall = pendingCalls[0] ?? null;
+
+  const acceptFromHome = async (call: CrewCall) => {
+    const pickupRequestId = getPickupRequestId(call);
+    if (!pickupRequestId) return;
+
+    setAcceptingId(pickupRequestId);
+    setErrorMessage(null);
+
+    try {
+      const crewLocation = await getCurrentCrewLocation();
+      await acceptCrewCall(pickupRequestId, crewLocation);
+      router.push(`/calls/${pickupRequestId}/active`);
+    } catch {
+      setErrorMessage("콜을 수락하지 못했어요. 잠시 후 다시 시도해 주세요.");
+      setAcceptingId(null);
+    }
+  };
+
+  const refreshSummary = async () => {
+    if (loading || isRefreshing) return;
+
+    setIsRefreshing(true);
+    setPullDistance(REFRESH_PULL_THRESHOLD);
+
+    try {
+      await loadSummary();
+    } finally {
+      setIsRefreshing(false);
+      setPullDistance(0);
+      touchStartYRef.current = null;
+    }
+  };
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.currentTarget.scrollTop > 0 || loading || isRefreshing) {
+      touchStartYRef.current = null;
+      return;
+    }
+
+    touchStartYRef.current = event.touches[0]?.clientY ?? null;
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    const startY = touchStartYRef.current;
+    if (startY == null || event.currentTarget.scrollTop > 0) return;
+
+    const currentY = event.touches[0]?.clientY ?? startY;
+    const nextDistance = Math.max(0, currentY - startY);
+    setPullDistance(Math.min(96, nextDistance));
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance >= REFRESH_PULL_THRESHOLD) {
+      void refreshSummary();
+      return;
+    }
+
+    setPullDistance(0);
+    touchStartYRef.current = null;
+  };
 
   return (
     <CrewPhoneShell>
       <div className="relative flex min-h-0 flex-1 flex-col bg-cloud px-4 pb-0">
         <CrewTopBar subtitle="Home" />
 
-        <div className="phone-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pb-3">
+        <div
+          className="phone-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pb-3"
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
+          onTouchStart={handleTouchStart}
+        >
+          <PullRefreshIndicator isRefreshing={isRefreshing} pullDistance={pullDistance} />
+
           <section className="px-1 pb-1 pt-2">
-            <p className="text-[15px] font-bold text-slate-500">LG 수거 크루님, 안녕하세요</p>
-            <h1 className="mt-1 text-[18px] font-bold leading-tight text-ink">
-              오늘 배차 상태와 내 정보를 한눈에 확인해 보세요
-            </h1>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[13px] font-bold text-lgred">LG SwapIt Crew</p>
+                <h1 className="mt-1 text-[22px] font-bold leading-tight text-ink">오늘의 수거 요청</h1>
+                <p className="mt-1 text-[13px] font-medium leading-5 text-slate-500">
+                  새 요청을 확인하고 진행 중인 수거를 바로 이어가요.
+                </p>
+              </div>
+              <ProfilePill profile={profile} />
+            </div>
           </section>
 
           <section className="rounded-[20px] bg-white p-4 shadow-sm">
-            <div className="flex w-full items-start justify-between gap-3">
+            <div className="flex w-full items-center justify-between gap-3">
               <span>
-                <span className="block text-[13px] font-bold text-slate-500">오늘 배차 상태</span>
-                <span className="mt-1 block text-[24px] font-bold leading-none text-ink">
+                <span className="block text-[12px] font-bold text-slate-400">배차 상태</span>
+                <span className="mt-1 block text-[22px] font-bold leading-none text-ink">
                   {dispatchEnabled ? "수신 중" : "수신 중지"}
                 </span>
               </span>
@@ -109,7 +205,7 @@ export default function CrewHomePage() {
                 type="button"
               >
                 <span
-                  className={`flex h-7 min-w-10 items-center justify-center rounded-full px-2 text-[11px] font-extrabold shadow-sm ${
+                  className={`flex h-7 min-w-10 items-center justify-center rounded-full px-2 text-[11px] font-bold shadow-sm ${
                     dispatchEnabled ? "bg-lgred text-white" : "bg-white text-slate-500"
                   }`}
                 >
@@ -118,37 +214,10 @@ export default function CrewHomePage() {
               </button>
             </div>
 
-            <div className="mt-4 grid grid-cols-4 divide-x divide-slate-100 border-t border-slate-100 pt-4">
-              <StatusStat label="전체" value={`${totalCalls}건`} />
-              <StatusStat label="수거 요청" value={`${pendingCalls.length}건`} />
-              <StatusStat label="진행 중" value={`${activeCalls.length}건`} />
-              <StatusStat label="처리 완료" value={`${completedCalls.length}건`} />
-            </div>
-          </section>
-
-          <section className="rounded-[20px] bg-white p-4 shadow-sm">
-            <div className="flex items-start gap-3">
-              {profile.photoUrl ? (
-                <img alt={profile.name} className="h-14 w-14 rounded-[18px] object-cover" src={profile.photoUrl} />
-              ) : (
-                <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[18px] bg-lgred/10 text-lgred">
-                  <UserRound size={26} />
-                </div>
-              )}
-
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <h2 className="text-[18px] font-bold text-ink">{profile.name}</h2>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-500">
-                    {dispatchEnabled ? "배차 수신 중" : "배차 중지"}
-                  </span>
-                </div>
-
-                <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-amber-50 px-3 py-1 text-[12px] font-bold text-amber-700">
-                  <Star className="fill-current" size={14} />
-                  평점 {profile.rating.toFixed(1)}
-                </div>
-              </div>
+            <div className="mt-4 grid grid-cols-3 gap-2">
+              <StatusStat label="새 요청" value={`${pendingCalls.length}건`} emphasis={pendingCalls.length > 0} />
+              <StatusStat label="진행 중" value={`${activeCalls.length}건`} emphasis={activeCalls.length > 0} />
+              <StatusStat label="완료" value={`${completedCalls.length}건`} />
             </div>
           </section>
 
@@ -158,26 +227,359 @@ export default function CrewHomePage() {
             </div>
           ) : null}
 
+          {primaryActiveCall ? <ActiveCallCard call={primaryActiveCall} /> : null}
+
+          {!primaryActiveCall && primaryPendingCall ? (
+            <PriorityPendingCard
+              accepting={acceptingId === getPickupRequestId(primaryPendingCall)}
+              call={primaryPendingCall}
+              onAccept={() => void acceptFromHome(primaryPendingCall)}
+            />
+          ) : null}
+
+          {!primaryActiveCall && !primaryPendingCall && !loading ? (
+            <section className="rounded-[22px] border border-slate-100 bg-white px-5 py-8 text-center shadow-sm">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] bg-lgred/10 text-lgred">
+                <Truck size={24} />
+              </div>
+              <h2 className="mt-4 text-[18px] font-bold text-ink">대기 중인 수거 요청이 없어요</h2>
+              <p className="mt-2 text-[13px] font-medium leading-5 text-slate-500">
+                새 요청이 들어오면 이 화면에서 바로 수락할 수 있어요.
+              </p>
+            </section>
+          ) : null}
+
           {loading ? (
             <div className="rounded-[18px] bg-white px-4 py-4 text-sm font-semibold leading-6 text-slate-500 shadow-sm">
-              배차 현황을 불러오는 중입니다...
+              수거 요청을 불러오는 중이에요...
             </div>
+          ) : null}
+
+          {pendingCalls.length > (primaryActiveCall ? 0 : 1) ? (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between px-1">
+                <h2 className="text-[16px] font-bold text-ink">새 요청</h2>
+                <Link className="text-[12px] font-bold text-lgred" href="/calls">
+                  전체 보기
+                </Link>
+              </div>
+
+              {pendingCalls.slice(primaryActiveCall ? 0 : 1, primaryActiveCall ? 3 : 4).map((call) => {
+                const pickupRequestId = getPickupRequestId(call);
+                if (!pickupRequestId) return null;
+
+                return (
+                  <CompactCallCard
+                    accepting={acceptingId === pickupRequestId}
+                    call={call}
+                    key={`pending-${call.id}`}
+                    onAccept={() => void acceptFromHome(call)}
+                  />
+                );
+              })}
+            </section>
           ) : null}
         </div>
 
-        <CrewBottomNav />
       </div>
     </CrewPhoneShell>
   );
 }
 
-function StatusStat({ label, value }: { label: string; value: string }) {
+function ProfilePill({ profile }: { profile: CrewProfileSummary }) {
   return (
-    <div className="px-2 first:pl-0 last:pr-0">
-      <p className="text-center text-[20px] font-bold leading-none text-ink">{value}</p>
-      <p className="mt-1 text-center text-[11px] font-bold text-slate-500">{label}</p>
+    <div className="flex shrink-0 items-center gap-2 rounded-full bg-white px-2.5 py-2 shadow-sm">
+      {profile.photoUrl ? (
+        <img alt={profile.name} className="h-8 w-8 rounded-full object-cover" src={profile.photoUrl} />
+      ) : (
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-lgred/10 text-lgred">
+          <UserRound size={16} />
+        </span>
+      )}
+      <span className="min-w-0">
+        <span className="block max-w-[72px] truncate text-[12px] font-bold leading-none text-ink">{profile.name}</span>
+        <span className="mt-1 flex items-center gap-1 text-[11px] font-bold leading-none text-amber-600">
+          <Star className="fill-current" size={11} />
+          {profile.rating.toFixed(1)}
+        </span>
+      </span>
     </div>
   );
+}
+
+function StatusStat({ emphasis = false, label, value }: { emphasis?: boolean; label: string; value: string }) {
+  return (
+    <div className={`rounded-[16px] px-3 py-3 ${emphasis ? "bg-lgred/10" : "bg-cloud"}`}>
+      <p className={`text-[20px] font-bold leading-none ${emphasis ? "text-lgred" : "text-ink"}`}>{value}</p>
+      <p className="mt-1 text-[11px] font-bold text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+function ActiveCallCard({ call }: { call: CrewCall }) {
+  const pickupRequestId = getPickupRequestId(call);
+  if (!pickupRequestId) return null;
+
+  return (
+    <section className="rounded-[22px] border border-lgred/20 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="inline-flex rounded-full bg-lgred/10 px-3 py-1 text-[11px] font-bold text-lgred">
+            {statusLabel(call.pickupRequest?.status)}
+          </span>
+          <h2 className="mt-3 text-[19px] font-bold leading-snug text-ink">진행 중인 수거가 있어요</h2>
+          <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-5 text-slate-500">
+            {call.pickupRequest?.address ?? "수거 주소 정보가 없습니다."}
+          </p>
+        </div>
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] bg-lgred text-white">
+          <Truck size={22} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <InfoTile label="예상 이동" value={getDurationLabel(call)} />
+        <InfoTile label="남은 거리" value={getDistanceLabel(call)} />
+      </div>
+
+      <Link
+        className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-lgred text-sm font-bold text-white shadow-[0_12px_24px_rgba(166,15,59,0.22)]"
+        href={`/calls/${pickupRequestId}/active`}
+      >
+        진행 화면 열기
+        <ChevronRight size={16} />
+      </Link>
+    </section>
+  );
+}
+
+function PriorityPendingCard({
+  accepting,
+  call,
+  onAccept,
+}: {
+  accepting: boolean;
+  call: CrewCall;
+  onAccept: () => void;
+}) {
+  const pickupRequestId = getPickupRequestId(call);
+  if (!pickupRequestId) return null;
+
+  return (
+    <section className="rounded-[22px] border border-lgred/20 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="inline-flex rounded-full bg-lgred/10 px-3 py-1 text-[11px] font-bold text-lgred">
+            새 수거 요청
+          </span>
+          <h2 className="mt-3 text-[19px] font-bold leading-snug text-ink">{applianceName(call)}</h2>
+          <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-5 text-slate-500">
+            {call.pickupRequest?.address ?? "수거 주소 정보가 없습니다."}
+          </p>
+        </div>
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] bg-lgred/10 text-lgred">
+          <PackageCheck size={22} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <InfoTile label="예상 정산" value={getPayoutLabel(call)} highlight />
+        <InfoTile label="현재 거리" value={getDistanceLabel(call)} />
+        <InfoTile label="요청 시간" value={formatCallTime(call)} />
+        <InfoTile label="예약 방식" value={pickupTypeLabel(call.pickupRequest?.pickupType)} />
+      </div>
+
+      {call.selectedProduct ? (
+        <div className="mt-3 rounded-[16px] bg-slate-50 px-3 py-3">
+          <p className="text-[10px] font-bold text-slate-400">선택 구매 제품</p>
+          <p className="mt-1 truncate text-[13px] font-bold text-ink">{call.selectedProduct.productName}</p>
+          <p className="mt-1 text-[12px] font-bold text-lgred">{formatInr(call.selectedProduct.productPrice)}</p>
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+        <button
+          className="flex h-12 items-center justify-center gap-2 rounded-[16px] bg-lgred text-sm font-bold text-white shadow-[0_12px_24px_rgba(166,15,59,0.22)] disabled:bg-slate-300 disabled:shadow-none"
+          disabled={accepting}
+          onClick={onAccept}
+          type="button"
+        >
+          <Check size={16} />
+          {accepting ? "수락 중..." : "수락하기"}
+        </button>
+        <Link
+          className="flex h-12 items-center justify-center rounded-[16px] border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600"
+          href={`/calls/${pickupRequestId}`}
+        >
+          상세
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function CompactCallCard({
+  accepting,
+  call,
+  onAccept,
+}: {
+  accepting: boolean;
+  call: CrewCall;
+  onAccept: () => void;
+}) {
+  const pickupRequestId = getPickupRequestId(call);
+  if (!pickupRequestId) return null;
+
+  return (
+    <article className="rounded-[20px] bg-white p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-lgred/10 text-lgred">
+          <MapPin size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-ink">{applianceName(call)}</p>
+          <p className="mt-1 line-clamp-2 text-[12px] font-medium leading-5 text-slate-500">
+            {call.pickupRequest?.address ?? "수거 주소 정보가 없습니다."}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-slate-500">
+            <Clock3 size={14} />
+            <span className="truncate">{formatCallTime(call)}</span>
+          </div>
+          <div className="mt-1 flex min-w-0 items-center gap-2 text-[12px] font-bold text-lgred">
+            <span className="truncate">{getPayoutLabel(call)}</span>
+            <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
+            <span className="truncate text-slate-500">{getDistanceLabel(call)}</span>
+          </div>
+        </div>
+        <button
+          className="h-9 shrink-0 rounded-full bg-lgred px-4 text-[12px] font-bold text-white disabled:bg-slate-300"
+          disabled={accepting}
+          onClick={onAccept}
+          type="button"
+        >
+          {accepting ? "수락 중" : "수락"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+function InfoTile({ highlight = false, label, value }: { highlight?: boolean; label: string; value: string }) {
+  return (
+    <div className={`min-w-0 rounded-[15px] px-3 py-3 ${highlight ? "bg-lgred/10" : "bg-cloud"}`}>
+      <p className={`text-[10px] font-bold ${highlight ? "text-lgred/70" : "text-slate-400"}`}>{label}</p>
+      <p className={`mt-1 truncate text-[13px] font-bold ${highlight ? "text-lgred" : "text-ink"}`}>{value}</p>
+    </div>
+  );
+}
+
+function PullRefreshIndicator({
+  isRefreshing,
+  pullDistance,
+}: {
+  isRefreshing: boolean;
+  pullDistance: number;
+}) {
+  const visible = isRefreshing || pullDistance > 0;
+  const progress = isRefreshing ? 100 : Math.min(100, Math.round((pullDistance / REFRESH_PULL_THRESHOLD) * 100));
+
+  return (
+    <div
+      className="overflow-hidden transition-[height,opacity] duration-200"
+      style={{
+        height: visible ? 42 : 0,
+        opacity: visible ? 1 : 0,
+      }}
+    >
+      <div className="flex h-10 items-center justify-center">
+        <div className="flex items-center gap-2 rounded-full bg-white px-3 py-2 shadow-sm">
+          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-lgred transition-all duration-150" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="text-[11px] font-bold text-slate-500">
+            {isRefreshing ? "새 요청 확인 중" : progress >= 100 ? "놓으면 새로고침" : "아래로 당겨 새로고침"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function getPickupRequestId(call: CrewCall) {
+  return call.pickupRequest?.pickupRequestId ?? call.id;
+}
+
+function getDistanceMeters(call: CrewCall) {
+  const assignedCrew = call.pickupRequest?.nearbyCrews?.find((crew) => crew.assigned);
+  const nearestCrew = call.pickupRequest?.nearbyCrews?.[0];
+
+  return (
+    call.tracking?.route?.distanceMeters ??
+    call.tracking?.metrics?.crewToPickupMeters ??
+    assignedCrew?.distanceMeters ??
+    nearestCrew?.distanceMeters ??
+    null
+  );
+}
+
+function getDistanceLabel(call: CrewCall) {
+  return call.tracking?.route?.distanceLabel ?? formatDistance(getDistanceMeters(call));
+}
+
+function getDurationLabel(call: CrewCall) {
+  if (call.tracking?.route?.durationLabel) {
+    return call.tracking.route.durationLabel;
+  }
+
+  const distanceMeters = getDistanceMeters(call);
+  if (distanceMeters == null) {
+    return "확인 중";
+  }
+
+  const minutes = Math.max(5, Math.round(distanceMeters / 350));
+  return `${minutes}분 예상`;
+}
+
+function getPayoutLabel(call: CrewCall) {
+  return call.settlement?.totalAmount == null ? "확인 중" : formatInr(call.settlement.totalAmount);
+}
+
+function formatInr(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "확인 중";
+  return `₹${Math.round(value).toLocaleString("en-IN")}`;
+}
+
+function getCurrentCrewLocation() {
+  return new Promise<CrewLocationPayload | undefined>((resolve) => {
+    if (!("geolocation" in navigator) || !window.isSecureContext) {
+      resolve(undefined);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          heading: position.coords.heading ?? 0,
+          speed: position.coords.speed ?? 0,
+          accuracy: position.coords.accuracy,
+          capturedAt: position.timestamp,
+        });
+      },
+      () => resolve(undefined),
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 5000,
+      },
+    );
+  });
 }
 
 function resolveCrewProfile(calls: CrewCall[]): CrewProfileSummary {

@@ -247,7 +247,7 @@ function statusLabel(status?: string) {
     case "IN_PROGRESS":
       return "이동 중";
     case "ARRIVED":
-      return "도착";
+      return "수거 완료";
     case "COMPLETED":
       return "처리 완료";
     default:
