@@ -4,16 +4,17 @@ import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import { KakaoCanvasMap } from "@/components/maps/KakaoCanvasMap";
 import {
   applianceName,
+  arriveCrewCall,
   completeCrewCall,
-  departCrewCall,
   fetchCrewCallDetail,
+  fetchCompletedCrewCalls,
   formatDistance,
   updateCrewLocation,
   type CrewCall,
 } from "@/lib/crew-api";
-import { ArrowLeft, Home, Navigation, Truck, Warehouse, X } from "lucide-react";
+import { ArrowLeft, Check, Navigation, X } from "lucide-react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 
 type Coordinate = {
   lat: number;
@@ -45,10 +46,16 @@ type LockedRoute = {
   durationLabel?: string | null;
 };
 
+type CompletionSummary = {
+  earnedAmount: number;
+  todayCount: number;
+  todayEarnings: number;
+};
+
 const kakaoMapAppKey = process.env.NEXT_PUBLIC_KAKAO_MAP_APP_KEY?.trim() ?? "";
 const DEFAULT_PICKUP_PHOTO = "crew-pickup-proof-demo.jpg";
 const DEFAULT_HUB_PHOTO = "crew-hub-proof-demo.jpg";
-const DEFAULT_PICKUP_MEMO = "문앞 도착 후 상태 확인 및 수거 완료";
+const DEFAULT_PICKUP_MEMO = "소비자 수거 완료 및 상태 확인";
 const DEFAULT_HUB_MEMO = "e-waste 허브 전달 및 처리 완료 등록";
 const FIXED_PROCESSING_CENTERS = [
   { label: "LG사이언스파크 마곡", lat: 37.562475, lng: 126.831166 },
@@ -76,7 +83,7 @@ function pickupStatusLabel(status?: string | null) {
     case "IN_PROGRESS":
       return "수거지 이동 중";
     case "ARRIVED":
-      return "문앞 도착";
+      return "수거 완료";
     case "COMPLETED":
       return "처리 완료";
     default:
@@ -144,6 +151,7 @@ export default function CrewActiveCallPage() {
   const [selectedMapCenter, setSelectedMapCenter] = useState<Coordinate | null>(null);
   const [selectedMapZoom, setSelectedMapZoom] = useState<number | null>(null);
   const [lockedCarRoute, setLockedCarRoute] = useState<LockedRoute | null>(null);
+  const [completionSummary, setCompletionSummary] = useState<CompletionSummary | null>(null);
 
   const loadCall = async () => {
     setLoading(true);
@@ -290,24 +298,52 @@ export default function CrewActiveCallPage() {
     status,
   ]);
 
-  const runAction = async (action: "depart" | "complete") => {
+  const completeCustomerPickupFromButton = async () => {
     setLoading(true);
 
     try {
-      const updated =
-        action === "depart"
-          ? await departCrewCall(pickupRequestId)
-          : await completeCrewCall(pickupRequestId, {
-              pickupPhotoFileName: DEFAULT_PICKUP_PHOTO,
-              hubPhotoFileName: DEFAULT_HUB_PHOTO,
-              inspectionMemo: DEFAULT_PICKUP_MEMO,
-              hubMemo: DEFAULT_HUB_MEMO,
-            });
+      const updated = await arriveCrewCall(pickupRequestId);
+      setCall(updated);
+      setMessage("소비자 수거 완료가 기록됐어요. 허브 전달 후 처리 완료를 눌러주세요.");
+    } catch {
+      setMessage("수거 완료 처리 중 문제가 발생했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const completeHubProcessingFromButton = async () => {
+    setLoading(true);
+
+    try {
+      const updated = await completeCrewCall(pickupRequestId, {
+        pickupPhotoFileName: DEFAULT_PICKUP_PHOTO,
+        hubPhotoFileName: DEFAULT_HUB_PHOTO,
+        inspectionMemo: DEFAULT_PICKUP_MEMO,
+        hubMemo: DEFAULT_HUB_MEMO,
+      });
 
       setCall(updated);
       setMessage(null);
+
+      try {
+        const completedCalls = await fetchCompletedCrewCalls();
+        const nextCompletedCalls = upsertCompletedCall(completedCalls, updated);
+        const todayCalls = nextCompletedCalls.filter(isCompletedToday);
+        setCompletionSummary({
+          earnedAmount: getSettlementAmount(updated),
+          todayCount: todayCalls.length,
+          todayEarnings: todayCalls.reduce((sum, completedCall) => sum + getSettlementAmount(completedCall), 0),
+        });
+      } catch {
+        setCompletionSummary({
+          earnedAmount: getSettlementAmount(updated),
+          todayCount: 1,
+          todayEarnings: getSettlementAmount(updated),
+        });
+      }
     } catch {
-      setMessage("진행 처리 중 문제가 발생했습니다.");
+      setMessage("처리 완료 등록 중 문제가 발생했습니다.");
     } finally {
       setLoading(false);
     }
@@ -393,8 +429,12 @@ export default function CrewActiveCallPage() {
   const liveStatusMetrics = [crewDistance, durationLabel].filter((value) => value && value !== "-").join(" · ");
   const liveStatus = liveStatusMetrics ? `${liveStatusBase} · ${liveStatusMetrics}` : liveStatusBase;
   const detailAddress = call?.booking?.detailAddress?.trim() || "상세 위치 정보 없음";
-  const canDepart = status === "ASSIGNED";
-  const canComplete = ["IN_PROGRESS", "ARRIVED"].includes(status);
+  const canCompleteCustomerPickup = ["ASSIGNED", "IN_PROGRESS"].includes(status);
+  const canCompleteHubProcessing = status === "ARRIVED";
+  const processingCompleted = status === "COMPLETED";
+  const primaryActionLabel = canCompleteHubProcessing ? "처리 완료" : "수거 완료";
+  const primaryActionDisabled = loading || (!canCompleteCustomerPickup && !canCompleteHubProcessing);
+  const handlePrimaryAction = canCompleteHubProcessing ? completeHubProcessingFromButton : completeCustomerPickupFromButton;
 
   const handleMarkerClick = (marker: { key: string; position: Coordinate }) => {
     if (marker.key !== "pickup") return;
@@ -412,21 +452,13 @@ export default function CrewActiveCallPage() {
     <CrewPhoneShell>
       <div className="relative flex min-h-0 flex-1 flex-col bg-cloud">
         <div className="phone-scroll min-h-0 flex-1 overflow-y-auto px-5 pb-32 pt-4">
-          <header className="flex items-start justify-between">
+          <header className="flex items-start">
             <button
               className="flex h-11 w-11 items-center justify-center rounded-full border border-white bg-white text-ink shadow-sm"
               onClick={() => router.push(`/calls/${pickupRequestId}`)}
               type="button"
             >
               <ArrowLeft size={18} />
-            </button>
-            <button
-              className="flex h-11 items-center gap-2 rounded-full border border-white bg-white px-4 text-sm font-black text-slate-700 shadow-sm"
-              onClick={() => router.push("/")}
-              type="button"
-            >
-              <Home size={14} />
-              홈
             </button>
           </header>
 
@@ -512,85 +544,49 @@ export default function CrewActiveCallPage() {
             )}
           </section>
 
-          <section className="mt-4 rounded-[22px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
-            <div className="flex items-center gap-2 text-sm font-black text-ink">
-              <Truck size={16} className="text-lgred" />
-              진행 처리
-            </div>
+        </div>
 
-            <div className="mt-4 space-y-3">
-              <ProgressActionCard
-                active={canDepart}
-                disabled={loading || !canDepart}
-                icon={<Truck size={18} />}
-                label="수거지 출발"
-                description="콜 수락 후 수거지로 이동을 시작할 때 눌러 주세요."
-                onClick={() => void runAction("depart")}
-              />
-              <ProgressActionCard
-                active={canComplete}
-                disabled={loading || !canComplete}
-                icon={<Warehouse size={18} />}
-                label="처리 완료"
-                description="수거 후 허브 전달과 처리 완료를 등록합니다."
-                onClick={() => void runAction("complete")}
-              />
+        <div className="absolute bottom-0 left-0 right-0 border-t border-slate-200 bg-white/95 px-5 pb-5 pt-4 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur">
+          {message ? (
+            <div className="mb-3 rounded-[16px] bg-slate-50 px-4 py-3 text-[12px] font-bold leading-5 text-slate-600">
+              {message}
             </div>
-          </section>
+          ) : null}
+
+          {processingCompleted ? (
+            <button
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-slate-100 text-sm font-black text-slate-500"
+              disabled
+              type="button"
+            >
+              <Check size={16} />
+              처리 완료됨
+            </button>
+          ) : (
+            <button
+              className="flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-lgred text-sm font-black text-white shadow-[0_12px_24px_rgba(166,15,59,0.22)] disabled:bg-slate-300 disabled:shadow-none"
+              disabled={primaryActionDisabled}
+              onClick={() => void handlePrimaryAction()}
+              type="button"
+            >
+              <Check size={16} />
+              {loading ? "처리 중..." : primaryActionLabel}
+            </button>
+          )}
 
         </div>
 
-        <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] border-t border-slate-200 bg-white/95 px-5 pb-5 pt-4 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur">
-          <button
-            className="mt-3 flex h-12 w-full items-center justify-center gap-2 rounded-[16px] border border-slate-200 bg-white text-sm font-black text-slate-700"
-            onClick={() => router.push("/active")}
-            type="button"
-          >
-            목록으로 돌아가기
-          </button>
-
-        </div>
+        {completionSummary ? (
+          <CompletionDialog
+            summary={completionSummary}
+            onConfirm={() => {
+              setCompletionSummary(null);
+              router.push("/");
+            }}
+          />
+        ) : null}
       </div>
       </CrewPhoneShell>
-  );
-}
-
-function ProgressActionCard({
-  active,
-  disabled,
-  icon,
-  label,
-  description,
-  onClick,
-}: {
-  active: boolean;
-  disabled: boolean;
-  icon: ReactNode;
-  label: string;
-  description: string;
-  onClick: () => void;
-}) {
-  return (
-    <button
-      className={`flex min-h-[92px] w-full items-start gap-4 rounded-[20px] border px-4 py-4 text-left transition ${
-        active ? "border-lgred/25 bg-white shadow-[0_6px_18px_rgba(15,23,42,0.05)]" : "border-slate-200 bg-cloud text-slate-400"
-      }`}
-      disabled={disabled}
-      onClick={onClick}
-      type="button"
-    >
-      <span
-        className={`mt-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-[16px] ${
-          active ? "bg-lgred text-white" : "bg-white text-slate-300"
-        }`}
-      >
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className={`block text-sm font-black ${active ? "text-ink" : "text-slate-400"}`}>{label}</span>
-        <span className="mt-2 block text-sm leading-6 text-slate-500">{description}</span>
-      </span>
-    </button>
   );
 }
 
@@ -601,4 +597,93 @@ function InfoTile({ label, value }: { label: string; value: string }) {
       <p className="mt-2 text-sm font-black leading-6 text-ink">{value}</p>
     </div>
   );
+}
+
+function CompletionDialog({
+  onConfirm,
+  summary,
+}: {
+  onConfirm: () => void;
+  summary: CompletionSummary;
+}) {
+  return (
+    <div className="absolute inset-0 z-50 flex items-end bg-black/55 px-4 pb-5 backdrop-blur-[2px]">
+      <section className="w-full rounded-[24px] bg-white p-5 shadow-[0_24px_60px_rgba(15,23,42,0.28)]">
+        <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] bg-lgred/10 text-lgred">
+          <Check size={26} />
+        </div>
+
+        <div className="mt-4 text-center">
+          <p className="text-[13px] font-bold text-lgred">처리 완료</p>
+          <h2 className="mt-1 text-[22px] font-black leading-tight text-ink">정산이 반영됐어요</h2>
+          <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">
+            허브 전달 실적과 정산 금액을 확인해 주세요.
+          </p>
+        </div>
+
+        <div className="mt-5 rounded-[20px] bg-lgred px-4 py-5 text-white">
+          <p className="text-[12px] font-bold opacity-80">이번 수거 정산</p>
+          <p className="mt-1 text-[30px] font-black leading-none">{formatInr(summary.earnedAmount)}</p>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-3">
+          <SummaryTile label="오늘 처리" value={`${summary.todayCount}건째`} />
+          <SummaryTile label="오늘 수익" value={formatInr(summary.todayEarnings)} />
+        </div>
+
+        <button
+          className="mt-5 flex h-12 w-full items-center justify-center rounded-[16px] bg-lgred text-sm font-black text-white shadow-[0_12px_24px_rgba(166,15,59,0.22)]"
+          onClick={onConfirm}
+          type="button"
+        >
+          확인
+        </button>
+      </section>
+    </div>
+  );
+}
+
+function SummaryTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-[18px] bg-cloud px-4 py-4">
+      <p className="text-[11px] font-bold text-slate-400">{label}</p>
+      <p className="mt-2 text-[18px] font-black leading-none text-ink">{value}</p>
+    </div>
+  );
+}
+
+function upsertCompletedCall(calls: CrewCall[], completedCall: CrewCall) {
+  const completedId = completedCall.pickupRequest?.pickupRequestId ?? completedCall.id;
+  const exists = calls.some((call) => (call.pickupRequest?.pickupRequestId ?? call.id) === completedId);
+  return exists ? calls : [completedCall, ...calls];
+}
+
+function getSettlementAmount(call: CrewCall) {
+  return call.settlement?.totalAmount ?? 0;
+}
+
+function isCompletedToday(call: CrewCall) {
+  const completedAt = getCompletedAt(call);
+  if (!completedAt) return false;
+
+  const today = new Date();
+  return (
+    completedAt.getFullYear() === today.getFullYear() &&
+    completedAt.getMonth() === today.getMonth() &&
+    completedAt.getDate() === today.getDate()
+  );
+}
+
+function getCompletedAt(call: CrewCall) {
+  const completedEvent = call.tracking?.events?.find((event) => event.eventType === "EWASTE_HUB_DELIVERED");
+  const source = completedEvent?.createdAt ?? call.tracking?.driverLocation?.updatedAt ?? call.pickupRequest?.scheduledAt;
+  if (!source) return null;
+
+  const parsed = new Date(source);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatInr(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "₹0";
+  return `₹${Math.round(value).toLocaleString("en-IN")}`;
 }

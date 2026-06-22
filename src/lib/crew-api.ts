@@ -34,6 +34,20 @@ export type CrewCall = {
     productGrade: string;
     productPrice: number;
   } | null;
+  preValuation?: {
+    minEstimatedValue?: number | null;
+    maxEstimatedValue?: number | null;
+    currency?: string | null;
+  } | null;
+  rewardEstimate?: {
+    scrapValue?: number | null;
+    estimatedFinalCredit?: number | null;
+  } | null;
+  rewardOverview?: {
+    currentCredit?: number | null;
+    userTier?: string | null;
+    exchangeCount?: number | null;
+  } | null;
   pickupRequest?: {
     pickupRequestId: number;
     pickupType: string;
@@ -119,6 +133,7 @@ export type CrewCall = {
     incentive: number | null;
     penalty: number | null;
     totalAmount: number | null;
+    currency?: string | null;
     status: string;
   } | null;
 };
@@ -137,7 +152,7 @@ function resolveApiBaseUrl() {
     return trimTrailingSlash(publicBaseUrl);
   }
 
-  return "http://127.0.0.1:8080";
+  return "http://127.0.0.1:8081";
 }
 
 const API_BASE_URL = resolveApiBaseUrl();
@@ -324,7 +339,7 @@ export function statusLabel(status?: string | null) {
     case "IN_PROGRESS":
       return "이동 중";
     case "ARRIVED":
-      return "문앞 도착";
+      return "수거 완료";
     case "COMPLETED":
       return "처리 완료";
     default:

@@ -1,18 +1,16 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 type CrewTopBarProps = {
   subtitle: string;
-  rightLabel?: string;
   backHref?: string | null;
   onRightClick?: () => void;
 };
 
 export function CrewTopBar({
   subtitle,
-  rightLabel = "로그아웃",
   backHref = null,
   onRightClick,
 }: CrewTopBarProps) {
@@ -32,6 +30,11 @@ export function CrewTopBar({
     router.push("/");
   };
 
+  const openProfile = () => {
+    onRightClick?.();
+    router.push("/profile");
+  };
+
   return (
     <header className="relative mb-3 flex items-center justify-between">
       <button
@@ -48,13 +51,14 @@ export function CrewTopBar({
         <p className="mt-1 text-[11px] font-semibold leading-none text-slate-500">{subtitle}</p>
       </div>
 
-      <button
-        className="h-9 rounded-full px-3 text-[11px] font-semibold text-slate-500"
-        onClick={onRightClick}
-        type="button"
-      >
-        {rightLabel}
-      </button>
-    </header>
+    <button
+      aria-label="내정보 열기"
+      className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm"
+      onClick={openProfile}
+      type="button"
+    >
+      <UserRound size={17} strokeWidth={2.2} />
+    </button>
+  </header>
   );
 }

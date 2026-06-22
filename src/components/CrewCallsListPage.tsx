@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ChevronRight, type LucideIcon } from "lucide-react";
-import { CrewBottomNav } from "@/components/CrewBottomNav";
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import { CrewTopBar } from "@/components/CrewTopBar";
 import {
@@ -14,6 +13,8 @@ import {
   statusLabel,
   type CrewCall,
 } from "@/lib/crew-api";
+
+const REFRESH_PULL_THRESHOLD = 64;
 
 export function CrewCallsListPage({
   actionLabel,
@@ -34,7 +35,10 @@ export function CrewCallsListPage({
 }) {
   const [calls, setCalls] = useState<CrewCall[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [pullDistance, setPullDistance] = useState(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const touchStartYRef = useRef<number | null>(null);
 
   const loadCalls = async () => {
     setLoading(true);
@@ -52,12 +56,50 @@ export function CrewCallsListPage({
 
   useEffect(() => {
     void loadCalls();
-    const timer = window.setInterval(() => {
-      void loadCalls();
-    }, 5000);
-
-    return () => window.clearInterval(timer);
   }, []);
+
+  const refreshCalls = async () => {
+    if (loading || isRefreshing) return;
+
+    setIsRefreshing(true);
+    setPullDistance(REFRESH_PULL_THRESHOLD);
+
+    try {
+      await loadCalls();
+    } finally {
+      setIsRefreshing(false);
+      setPullDistance(0);
+      touchStartYRef.current = null;
+    }
+  };
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+    if (event.currentTarget.scrollTop > 0 || loading || isRefreshing) {
+      touchStartYRef.current = null;
+      return;
+    }
+
+    touchStartYRef.current = event.touches[0]?.clientY ?? null;
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLElement>) => {
+    const startY = touchStartYRef.current;
+    if (startY == null || event.currentTarget.scrollTop > 0) return;
+
+    const currentY = event.touches[0]?.clientY ?? startY;
+    const nextDistance = Math.max(0, currentY - startY);
+    setPullDistance(Math.min(96, nextDistance));
+  };
+
+  const handleTouchEnd = () => {
+    if (pullDistance >= REFRESH_PULL_THRESHOLD) {
+      void refreshCalls();
+      return;
+    }
+
+    setPullDistance(0);
+    touchStartYRef.current = null;
+  };
 
   return (
     <CrewPhoneShell>
@@ -76,7 +118,14 @@ export function CrewCallsListPage({
           ) : null}
         </div>
 
-        <section className="phone-scroll mt-3 min-h-0 flex-1 overflow-y-auto pb-3">
+        <section
+          className="phone-scroll mt-3 min-h-0 flex-1 overflow-y-auto pb-5"
+          onTouchEnd={handleTouchEnd}
+          onTouchMove={handleTouchMove}
+          onTouchStart={handleTouchStart}
+        >
+          <PullRefreshIndicator isRefreshing={isRefreshing} pullDistance={pullDistance} />
+
           <div className="space-y-3">
             {calls.length > 0 ? (
               calls.map((call) => {
@@ -121,7 +170,6 @@ export function CrewCallsListPage({
           </div>
         </section>
 
-        <CrewBottomNav />
       </div>
     </CrewPhoneShell>
   );
@@ -132,6 +180,38 @@ function InfoTile({ label, value }: { label: string; value: string }) {
     <div className="rounded-[16px] bg-cloud px-3 py-3">
       <p className="text-[11px] font-bold text-slate-400">{label}</p>
       <p className="mt-1 text-sm font-bold text-ink">{value}</p>
+    </div>
+  );
+}
+
+function PullRefreshIndicator({
+  isRefreshing,
+  pullDistance,
+}: {
+  isRefreshing: boolean;
+  pullDistance: number;
+}) {
+  const visible = isRefreshing || pullDistance > 0;
+  const progress = isRefreshing ? 100 : Math.min(100, Math.round((pullDistance / REFRESH_PULL_THRESHOLD) * 100));
+
+  return (
+    <div
+      className="overflow-hidden transition-[height,opacity] duration-200"
+      style={{
+        height: visible ? 42 : 0,
+        opacity: visible ? 1 : 0,
+      }}
+    >
+      <div className="flex h-10 items-center justify-center">
+        <div className="flex items-center gap-2 rounded-full bg-white px-3 py-2 shadow-sm">
+          <div className="h-1.5 w-20 overflow-hidden rounded-full bg-slate-100">
+            <div className="h-full rounded-full bg-lgred transition-all duration-150" style={{ width: `${progress}%` }} />
+          </div>
+          <span className="text-[11px] font-bold text-slate-500">
+            {isRefreshing ? "목록 확인 중" : progress >= 100 ? "놓으면 새로고침" : "아래로 당겨 새로고침"}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
