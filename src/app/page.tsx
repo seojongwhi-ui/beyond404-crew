@@ -220,7 +220,7 @@ export default function CrewHomePage() {
             </div>
 
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <StatusStat label="새 요청" value={`${pendingCalls.length}건`} emphasis={pendingCalls.length > 0} />
+              <StatusStat label="새 요청" value={`${dispatchEnabled ? pendingCalls.length : 0}건`} emphasis={activeCalls.length > 0} />
               <StatusStat label="진행 중" value={`${activeCalls.length}건`} emphasis={activeCalls.length > 0} />
               <StatusStat label="완료" value={`${completedCalls.length}건`} />
             </div>
@@ -232,17 +232,9 @@ export default function CrewHomePage() {
             </div>
           ) : null}
 
-          {primaryActiveCall ? <ActiveCallCard call={primaryActiveCall} /> : null}
+          {primaryActiveCall ? <ActiveCallCard call={primaryActiveCall} /> : !loading ? <NoActiveCallCard /> : null}
 
-          {!primaryActiveCall && primaryPendingCall ? (
-            <PriorityPendingCard
-              accepting={acceptingId === getPickupRequestId(primaryPendingCall)}
-              call={primaryPendingCall}
-              onAccept={() => void acceptFromHome(primaryPendingCall)}
-            />
-          ) : null}
-
-          {!primaryActiveCall && !primaryPendingCall && !loading ? (
+          {dispatchEnabled && !primaryPendingCall && !loading ? (
             <section className="rounded-[22px] border border-slate-100 bg-white px-5 py-8 text-center shadow-sm">
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] bg-lgred/10 text-lgred">
                 <Truck size={24} />
@@ -260,7 +252,7 @@ export default function CrewHomePage() {
             </div>
           ) : null}
 
-          {pendingCalls.length > (primaryActiveCall ? 0 : 1) ? (
+          {dispatchEnabled && pendingCalls.length > 0 ? (
             <section className="space-y-3">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-[16px] font-bold text-ink">새 요청</h2>
@@ -269,7 +261,7 @@ export default function CrewHomePage() {
                 </Link>
               </div>
 
-              {pendingCalls.slice(primaryActiveCall ? 0 : 1, primaryActiveCall ? 3 : 4).map((call) => {
+              {pendingCalls.slice(0, primaryActiveCall ? 3 : 4).map((call) => {
                 const pickupRequestId = getPickupRequestId(call);
                 if (!pickupRequestId) return null;
 
@@ -319,6 +311,20 @@ function StatusStat({ emphasis = false, label, value }: { emphasis?: boolean; la
       <p className={`text-[20px] font-bold leading-none ${emphasis ? "text-lgred" : "text-ink"}`}>{value}</p>
       <p className="mt-1 text-[11px] font-bold text-slate-500">{label}</p>
     </div>
+  );
+}
+
+function NoActiveCallCard() {
+  return (
+    <section className="rounded-[22px] border border-slate-100 bg-white p-5 text-center shadow-sm">
+      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] bg-slate-100 text-slate-500">
+        <Truck size={24} />
+      </div>
+      <h2 className="mt-4 text-[18px] font-bold text-ink">진행 중인 수거가 없어요</h2>
+      <p className="mt-2 text-[13px] font-medium leading-5 text-slate-500">
+        새 요청에서 수락하면 이곳에 진행 중인 수거가 표시됩니다.
+      </p>
+    </section>
   );
 }
 
@@ -464,6 +470,10 @@ function CompactCallCard({
             <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
             <span className="truncate text-slate-500">{getDistanceLabel(call)}</span>
           </div>
+          <div className="mt-1 flex min-w-0 items-center gap-2 text-[12px] font-bold text-slate-500">
+            <Truck size={14} />
+            <span className="truncate">{pickupTypeLabel(call.pickupRequest?.pickupType)}</span>
+          </div>
         </div>
         <button
           className="h-9 shrink-0 rounded-full bg-lgred px-4 text-[12px] font-bold text-white disabled:bg-slate-300"
@@ -565,8 +575,10 @@ function getPayoutLabel(call: CrewCall) {
 
 function formatWon(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "확인 중";
-  return `${Math.round(value).toLocaleString("ko-KR")}원`;
+  return `${Math.round(value * INR_TO_KRW_RATE).toLocaleString("ko-KR")}원`;
 }
+
+const INR_TO_KRW_RATE = 10156 / 625;
 
 function getCurrentCrewLocation() {
   return new Promise<CrewLocationPayload | undefined>((resolve) => {

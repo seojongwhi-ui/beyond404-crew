@@ -255,5 +255,7 @@ function getCompletedAt(call: CrewCall) {
 
 function formatWon(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "0원";
-  return `${Math.round(value).toLocaleString("ko-KR")}원`;
+  return `${Math.round(value * INR_TO_KRW_RATE).toLocaleString("ko-KR")}원`;
 }
+
+const INR_TO_KRW_RATE = 10156 / 625;

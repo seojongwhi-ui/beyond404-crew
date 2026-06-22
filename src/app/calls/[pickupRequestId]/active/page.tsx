@@ -623,12 +623,12 @@ function CompletionDialog({
 
         <div className="mt-5 rounded-[20px] bg-lgred px-4 py-5 text-white">
           <p className="text-[12px] font-bold opacity-80">이번 수거 정산</p>
-          <p className="mt-1 text-[30px] font-black leading-none">{formatInr(summary.earnedAmount)}</p>
+          <p className="mt-1 text-[30px] font-black leading-none">{formatWon(summary.earnedAmount)}</p>
         </div>
 
         <div className="mt-3 grid grid-cols-2 gap-3">
           <SummaryTile label="오늘 처리" value={`${summary.todayCount}건째`} />
-          <SummaryTile label="오늘 수익" value={formatInr(summary.todayEarnings)} />
+          <SummaryTile label="오늘 수익" value={formatWon(summary.todayEarnings)} />
         </div>
 
         <button
@@ -683,7 +683,9 @@ function getCompletedAt(call: CrewCall) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function formatInr(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return "₹0";
-  return `₹${Math.round(value).toLocaleString("en-IN")}`;
+function formatWon(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) return "0원";
+  return `${Math.round(value * INR_TO_KRW_RATE).toLocaleString("ko-KR")}원`;
 }
+
+const INR_TO_KRW_RATE = 10156 / 625;
