@@ -377,6 +377,135 @@ function ActiveCallCard({ call }: { call: CrewCall }) {
   );
 }
 
+function PriorityPendingCard({
+  accepting,
+  call,
+  onAccept,
+}: {
+  accepting: boolean;
+  call: CrewCall;
+  onAccept: () => void;
+}) {
+  const pickupRequestId = getPickupRequestId(call);
+  if (!pickupRequestId) return null;
+
+  return (
+    <section className="rounded-[22px] border border-lgred/20 bg-white p-4 shadow-sm">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="inline-flex rounded-full bg-lgred/10 px-3 py-1 text-[11px] font-bold text-lgred">
+            새 수거 요청
+          </span>
+          <h2 className="mt-3 text-[19px] font-bold leading-snug text-ink">{applianceName(call)}</h2>
+          <p className="mt-1 line-clamp-2 text-[13px] font-medium leading-5 text-slate-500">
+            {call.pickupRequest?.address ?? "수거 주소 정보가 없습니다."}
+          </p>
+        </div>
+        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[16px] bg-lgred/10 text-lgred">
+          <PackageCheck size={22} />
+        </div>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-2">
+        <InfoTile label="예상 정산" value={getPayoutLabel(call)} highlight />
+        <InfoTile label="현재 거리" value={getDistanceLabel(call)} />
+        <InfoTile label="요청 시간" value={formatCallTime(call)} />
+        <InfoTile label="예약 방식" value={pickupTypeLabel(call.pickupRequest?.pickupType)} />
+        <InfoTile label="수거 + 허브" value={getLegDistanceLabel(call)} />
+      </div>
+
+      {call.selectedProduct ? (
+        <div className="mt-3 rounded-[16px] bg-slate-50 px-3 py-3">
+          <p className="text-[10px] font-bold text-slate-400">선택 구매 제품</p>
+          <p className="mt-1 truncate text-[13px] font-bold text-ink">{call.selectedProduct.productName}</p>
+          <p className="mt-1 text-[12px] font-bold text-lgred">{formatWon(call.selectedProduct.productPrice)}</p>
+        </div>
+      ) : null}
+
+      <div className="mt-4 grid grid-cols-[1fr_auto] gap-2">
+        <button
+          className="flex h-12 items-center justify-center gap-2 rounded-[16px] bg-lgred text-sm font-bold text-white shadow-[0_12px_24px_rgba(166,15,59,0.22)] disabled:bg-slate-300 disabled:shadow-none"
+          disabled={accepting}
+          onClick={onAccept}
+          type="button"
+        >
+          <Check size={16} />
+          {accepting ? "수락 중..." : "수락하기"}
+        </button>
+        <Link
+          className="flex h-12 items-center justify-center rounded-[16px] border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600"
+          href={`/calls/${pickupRequestId}`}
+        >
+          상세
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+function CompactCallCard({
+  accepting,
+  blocked = false,
+  call,
+  onAccept,
+}: {
+  accepting: boolean;
+  blocked?: boolean;
+  call: CrewCall;
+  onAccept: () => void;
+}) {
+  const pickupRequestId = getPickupRequestId(call);
+  if (!pickupRequestId) return null;
+
+  return (
+    <article className="rounded-[20px] bg-white p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-lgred/10 text-lgred">
+          <MapPin size={18} />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-bold text-ink">{applianceName(call)}</p>
+          <p className="mt-1 line-clamp-2 text-[12px] font-medium leading-5 text-slate-500">
+            {call.pickupRequest?.address ?? "수거 주소 정보가 없습니다."}
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-slate-500">
+            <Clock3 size={14} />
+            <span className="truncate">{formatCallTime(call)}</span>
+          </div>
+          <div className="mt-1 flex min-w-0 items-center gap-2 text-[12px] font-bold text-lgred">
+            <span className="shrink-0 text-slate-500">예상 정산</span>
+            <span className="truncate">{getPayoutLabel(call)}</span>
+            <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
+            <span className="truncate text-slate-500">{getDistanceLabel(call)}</span>
+          </div>
+          <div className="mt-1 flex min-w-0 items-center gap-2 text-[12px] font-bold text-slate-500">
+            <Truck size={14} />
+            <span className="truncate">{pickupTypeLabel(call.pickupRequest?.pickupType)}</span>
+          </div>
+        </div>
+        <button
+          className="h-9 shrink-0 rounded-full bg-lgred px-4 text-[12px] font-bold text-white disabled:bg-slate-300"
+          disabled={accepting || blocked}
+          onClick={onAccept}
+          type="button"
+        >
+          {blocked ? "진행 중" : accepting ? "수락 중" : "수락"}
+        </button>
+      </div>
+      {blocked ? (
+        <p className="mt-3 rounded-[12px] bg-slate-50 px-3 py-2 text-[11px] font-semibold leading-4 text-slate-500">
+          현재 수거를 처리 완료하면 새 요청을 수락할 수 있어요.
+        </p>
+      ) : null}
+    </article>
+  );
+}
+
 function InfoTile({ highlight = false, label, value }: { highlight?: boolean; label: string; value: string }) {
   return (
     <div className={`min-w-0 rounded-[15px] px-3 py-3 ${highlight ? "bg-lgred/10" : "bg-cloud"}`}>
@@ -436,7 +565,13 @@ function getDistanceMeters(call: CrewCall) {
 }
 
 function getDistanceLabel(call: CrewCall) {
-  return call.tracking?.route?.distanceLabel ?? formatDistance(getDistanceMeters(call));
+  const distanceMeters = getDistanceMeters(call);
+  if (distanceMeters != null) {
+    return call.tracking?.route?.distanceLabel ?? formatDistance(distanceMeters);
+  }
+
+  const settlementDistanceMeters = calculateCrewSettlement(call).totalDistanceMeters;
+  return settlementDistanceMeters != null && settlementDistanceMeters > 0 ? formatDistance(settlementDistanceMeters) : "-";
 }
 
 function getLegDistanceLabel(call: CrewCall) {
@@ -495,19 +630,29 @@ function getCurrentCrewLocation() {
 }
 
 function resolveCrewProfile(calls: CrewCall[]): CrewProfileSummary {
+  const profileCall = calls.find((call) => call.crewProfile?.name);
   const ratings = calls
     .map((call) => call.crewProfile?.rating)
     .filter((rating): rating is number => typeof rating === "number" && Number.isFinite(rating) && rating > 0);
+  const name =
+    profileCall?.crewProfile?.name?.trim() ||
+    calls.find((call) => call.pickupRequest?.crewName)?.pickupRequest?.crewName?.trim() ||
+    "무함마드";
+  const photoUrl = DEFAULT_CREW_PROFILE.photoUrl;
 
   if (ratings.length > 0) {
     const averageRating = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
 
     return {
-      name: DEFAULT_CREW_NAME,
-      photoUrl: DEFAULT_CREW_PROFILE.photoUrl,
+      name,
+      photoUrl,
       rating: Number(averageRating.toFixed(1)),
     };
   }
 
-  return DEFAULT_CREW_PROFILE;
+  return {
+    name,
+    photoUrl,
+    rating: DEFAULT_CREW_PROFILE.rating,
+  };
 }
