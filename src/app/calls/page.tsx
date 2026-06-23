@@ -11,6 +11,8 @@ export default function PendingCallsPage() {
       emptyMessage="현재 수락 대기 중인 수거 요청이 없습니다."
       fetchCalls={fetchPendingCrewCalls}
       icon={ClipboardList}
+      requestActions
+      showProfileButton={false}
       subtitle="새로 들어온 예약 콜과 바로콜을 확인하고 수락할 수 있어요."
       title="수거 요청"
       topSubtitle="Requests"

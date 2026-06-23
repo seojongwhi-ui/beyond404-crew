@@ -3,20 +3,18 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronRight, Clock3, MapPin, PackageCheck, Star, Truck, UserRound } from "lucide-react";
+import { ChevronRight, Star, Truck, UserRound } from "lucide-react";
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
+import { CrewRequestCard } from "@/components/CrewRequestCard";
 import { CrewTopBar } from "@/components/CrewTopBar";
 import {
   acceptCrewCall,
-  applianceName,
   calculateCrewSettlement,
   fetchActiveCrewCalls,
   fetchCompletedCrewCalls,
   fetchPendingCrewCalls,
-  formatCallTime,
   formatDistance,
   formatKrwAmount,
-  pickupTypeLabel,
   sortCallsByLatest,
   statusLabel,
   type CrewCall,
@@ -56,6 +54,7 @@ export default function CrewHomePage() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
   const [acceptingId, setAcceptingId] = useState<number | null>(null);
+  const [dismissedPendingIds, setDismissedPendingIds] = useState<number[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const touchStartYRef = useRef<number | null>(null);
 
@@ -115,7 +114,10 @@ export default function CrewHomePage() {
   );
 
   const primaryActiveCall = activeCalls[0] ?? null;
-  const primaryPendingCall = pendingCalls[0] ?? null;
+  const visiblePendingCalls = useMemo(
+    () => pendingCalls.filter((call) => !dismissedPendingIds.includes(getPickupRequestId(call))),
+    [dismissedPendingIds, pendingCalls],
+  );
 
   const acceptFromHome = async (call: CrewCall) => {
     if (primaryActiveCall) {
@@ -152,6 +154,11 @@ export default function CrewHomePage() {
       setPullDistance(0);
       touchStartYRef.current = null;
     }
+  };
+
+  const dismissPendingCall = (call: CrewCall) => {
+    const pickupRequestId = getPickupRequestId(call);
+    setDismissedPendingIds((prev) => (prev.includes(pickupRequestId) ? prev : [...prev, pickupRequestId]));
   };
 
   const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -201,7 +208,7 @@ export default function CrewHomePage() {
                 <p className="text-[13px] font-bold text-lgred">LG SwapIt Crew</p>
                 <h1 className="mt-1 text-[22px] font-bold leading-tight text-ink">오늘의 수거 요청</h1>
                 <p className="mt-1 text-[13px] font-medium leading-5 text-slate-500">
-                  새 요청을 확인하고 진행 중인 수거를 바로 이어가요.
+              
                 </p>
               </div>
               <ProfilePill profile={profile} />
@@ -236,7 +243,7 @@ export default function CrewHomePage() {
             </div>
 
             <div className="mt-4 grid grid-cols-3 gap-2">
-              <StatusStat label="새 요청" value={`${dispatchEnabled ? pendingCalls.length : 0}건`} emphasis={activeCalls.length > 0} />
+              <StatusStat label="새 요청" value={`${dispatchEnabled ? visiblePendingCalls.length : 0}건`} emphasis={activeCalls.length > 0} />
               <StatusStat label="진행 중" value={`${activeCalls.length}건`} emphasis={activeCalls.length > 0} />
               <StatusStat label="완료" value={`${completedCalls.length}건`} />
             </div>
@@ -248,19 +255,7 @@ export default function CrewHomePage() {
             </div>
           ) : null}
 
-          {primaryActiveCall ? <ActiveCallCard call={primaryActiveCall} /> : !loading ? <NoActiveCallCard /> : null}
-
-          {dispatchEnabled && !primaryPendingCall && !loading ? (
-            <section className="rounded-[22px] border border-slate-100 bg-white px-5 py-8 text-center shadow-sm">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] bg-lgred/10 text-lgred">
-                <Truck size={24} />
-              </div>
-              <h2 className="mt-4 text-[18px] font-bold text-ink">대기 중인 수거 요청이 없어요</h2>
-              <p className="mt-2 text-[13px] font-medium leading-5 text-slate-500">
-                새 요청이 들어오면 이 화면에서 바로 수락할 수 있어요.
-              </p>
-            </section>
-          ) : null}
+          {primaryActiveCall ? <ActiveCallCard call={primaryActiveCall} /> : null}
 
           {loading ? (
             <div className="rounded-[18px] bg-white px-4 py-4 text-sm font-semibold leading-6 text-slate-500 shadow-sm">
@@ -268,7 +263,7 @@ export default function CrewHomePage() {
             </div>
           ) : null}
 
-          {dispatchEnabled && pendingCalls.length > 0 ? (
+          {dispatchEnabled && !loading ? (
             <section className="space-y-3">
               <div className="flex items-center justify-between px-1">
                 <h2 className="text-[16px] font-bold text-ink">새 요청</h2>
@@ -277,20 +272,32 @@ export default function CrewHomePage() {
                 </Link>
               </div>
 
-              {pendingCalls.slice(0, primaryActiveCall ? 3 : 4).map((call) => {
-                const pickupRequestId = getPickupRequestId(call);
-                if (!pickupRequestId) return null;
+              {visiblePendingCalls.length > 0 ? (
+                visiblePendingCalls.slice(0, primaryActiveCall ? 3 : 4).map((call) => {
+                  const pickupRequestId = getPickupRequestId(call);
 
-                return (
-                  <CompactCallCard
-                    accepting={acceptingId === pickupRequestId}
-                    blocked={Boolean(primaryActiveCall)}
-                    call={call}
-                    key={`pending-${call.id}`}
-                    onAccept={() => void acceptFromHome(call)}
-                  />
-                );
-              })}
+                  return (
+                    <CrewRequestCard
+                      accepting={acceptingId === pickupRequestId}
+                      blocked={Boolean(primaryActiveCall)}
+                      call={call}
+                      key={`pending-${call.id}`}
+                      onAccept={() => void acceptFromHome(call)}
+                      onReject={() => dismissPendingCall(call)}
+                    />
+                  );
+                })
+              ) : (
+                <section className="rounded-[22px] border border-slate-100 bg-white px-5 py-8 text-center shadow-sm">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] bg-lgred/10 text-lgred">
+                    <Truck size={24} />
+                  </div>
+                  <h2 className="mt-4 text-[18px] font-bold text-ink">새 요청을 기다리고 있어요</h2>
+                  <p className="mt-2 text-[13px] font-medium leading-5 text-slate-500">
+                    요청이 들어오면 이 박스 안에서 바로 수락하거나 거절할 수 있어요.
+                  </p>
+                </section>
+              )}
             </section>
           ) : null}
         </div>
@@ -330,20 +337,6 @@ function StatusStat({ emphasis = false, label, value }: { emphasis?: boolean; la
   );
 }
 
-function NoActiveCallCard() {
-  return (
-    <section className="rounded-[22px] border border-slate-100 bg-white p-5 text-center shadow-sm">
-      <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-[18px] bg-slate-100 text-slate-500">
-        <Truck size={24} />
-      </div>
-      <h2 className="mt-4 text-[18px] font-bold text-ink">진행 중인 수거가 없어요</h2>
-      <p className="mt-2 text-[13px] font-medium leading-5 text-slate-500">
-        새 요청에서 수락하면 이곳에 진행 중인 수거가 표시됩니다.
-      </p>
-    </section>
-  );
-}
-
 function ActiveCallCard({ call }: { call: CrewCall }) {
   const pickupRequestId = getPickupRequestId(call);
   if (!pickupRequestId) return null;
@@ -376,7 +369,8 @@ function ActiveCallCard({ call }: { call: CrewCall }) {
         className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-lgred text-sm font-bold text-white shadow-[0_12px_24px_rgba(166,15,59,0.22)]"
         href={`/calls/${pickupRequestId}/active`}
       >
-        진행 화면 열기
+        상세 보기
+
         <ChevronRight size={16} />
       </Link>
     </section>
@@ -606,13 +600,6 @@ function getDurationLabel(call: CrewCall) {
 function getPayoutLabel(call: CrewCall) {
   return formatKrwAmount(calculateCrewSettlement(call).totalAmount);
 }
-
-function formatWon(value: number | null | undefined) {
-  if (value == null || !Number.isFinite(value)) return "확인 중";
-  return `${Math.round(value * INR_TO_KRW_RATE).toLocaleString("ko-KR")}원`;
-}
-
-const INR_TO_KRW_RATE = 10156 / 625;
 
 function getCurrentCrewLocation() {
   return new Promise<CrewLocationPayload | undefined>((resolve) => {

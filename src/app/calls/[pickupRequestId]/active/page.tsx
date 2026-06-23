@@ -632,7 +632,7 @@ function CompletionDialog({
           <p className="text-[13px] font-bold text-lgred">처리 완료</p>
           <h2 className="mt-1 text-[22px] font-black leading-tight text-ink">정산이 반영됐어요</h2>
           <p className="mt-2 text-[13px] font-semibold leading-5 text-slate-500">
-            허브 전달 실적과 정산 금액을 확인해 주세요.
+            정산 금액을 확인해 주세요.
           </p>
         </div>
 

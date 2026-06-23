@@ -13,7 +13,7 @@ import {
   pickupTypeLabel,
   type CrewCall,
 } from "@/lib/crew-api";
-import { ArrowLeft, Check, Home, MapPin, PackageCheck, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Check, MapPin, PackageCheck, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -67,6 +67,7 @@ export default function CrewCallDetailPage() {
   const hasAcceptedStatus = ["ASSIGNED", "IN_PROGRESS", "ARRIVED", "COMPLETED"].includes(status);
   const isAcceptableStatus = Boolean(call) && !hasAcceptedStatus;
   const canAccept = isAcceptableStatus && !hasBlockingActiveCall;
+  const showBlockedAcceptButton = hasBlockingActiveCall && isAcceptableStatus;
 
   const actionLabel = useMemo(() => {
     if (hasBlockingActiveCall) return "진행 중인 수거가 있어요";
@@ -147,7 +148,7 @@ export default function CrewCallDetailPage() {
   return (
     <CrewPhoneShell>
       <div className="relative flex min-h-0 flex-1 flex-col bg-cloud">
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-44 pt-4 phone-scroll">
+        <div className={`min-h-0 flex-1 overflow-y-auto px-5 pt-4 phone-scroll ${showBlockedAcceptButton ? "pb-5" : "pb-44"}`}>
           <header className="flex items-start justify-between">
             <button
               className="flex h-11 w-11 items-center justify-center rounded-full border border-white bg-white text-ink shadow-sm"
@@ -156,14 +157,7 @@ export default function CrewCallDetailPage() {
             >
               <ArrowLeft size={18} />
             </button>
-            <button
-              className="flex h-11 items-center gap-2 rounded-full border border-white bg-white px-4 text-sm font-black text-slate-700 shadow-sm"
-              onClick={() => router.push("/")}
-              type="button"
-            >
-              <Home size={14} />
-              홈
-            </button>
+            <span aria-hidden="true" className="h-11 w-11" />
           </header>
 
           <section className="mt-5 rounded-[22px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
@@ -231,15 +225,25 @@ export default function CrewCallDetailPage() {
               콜 상세 정보를 불러오지 못했습니다.
             </div>
           ) : null}
+
+          {showBlockedAcceptButton ? (
+            <section className="mt-4 rounded-[22px] border border-slate-100 bg-white px-4 py-4 shadow-sm">
+              <button
+                className="flex h-12 w-full items-center justify-center rounded-[16px] bg-slate-300 text-sm font-bold text-white"
+                disabled
+                type="button"
+              >
+                진행 중인 수거가 있어요
+              </button>
+              <p className="mt-3 text-center text-[12px] font-semibold leading-5 text-slate-500">
+                현재 수거를 처리 완료한 뒤 새 요청을 수락할 수 있어요.
+              </p>
+            </section>
+          ) : null}
         </div>
 
+        {!showBlockedAcceptButton ? (
         <div className="absolute bottom-0 left-0 right-0 rounded-t-[28px] border-t border-slate-200 bg-white/95 px-5 pb-5 pt-4 shadow-[0_-12px_32px_rgba(15,23,42,0.08)] backdrop-blur">
-          {hasBlockingActiveCall && isAcceptableStatus ? (
-            <p className="mb-3 rounded-[14px] bg-slate-50 px-4 py-3 text-[12px] font-semibold leading-5 text-slate-500">
-              진행 중인 수거를 처리 완료한 뒤 새 요청을 수락할 수 있어요.
-            </p>
-          ) : null}
-
           {isAcceptableStatus ? (
             <button
               className="flex h-12 w-full items-center justify-center gap-2 rounded-[16px] bg-lgred text-sm font-black text-white shadow-[0_14px_26px_rgba(166,15,59,0.22)] disabled:bg-slate-300"
@@ -259,6 +263,7 @@ export default function CrewCallDetailPage() {
             목록으로 돌아가기
           </Link>
         </div>
+        ) : null}
       </div>
       </CrewPhoneShell>
   );
