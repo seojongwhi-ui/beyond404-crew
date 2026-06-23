@@ -484,6 +484,7 @@ function CompactCallCard({
             <span className="truncate">{formatCallTime(call)}</span>
           </div>
           <div className="mt-1 flex min-w-0 items-center gap-2 text-[12px] font-bold text-lgred">
+            <span className="shrink-0 text-slate-500">예상 정산</span>
             <span className="truncate">{getPayoutLabel(call)}</span>
             <span className="h-1 w-1 shrink-0 rounded-full bg-slate-300" />
             <span className="truncate text-slate-500">{getDistanceLabel(call)}</span>
@@ -570,7 +571,13 @@ function getDistanceMeters(call: CrewCall) {
 }
 
 function getDistanceLabel(call: CrewCall) {
-  return call.tracking?.route?.distanceLabel ?? formatDistance(getDistanceMeters(call));
+  const distanceMeters = getDistanceMeters(call);
+  if (distanceMeters != null) {
+    return call.tracking?.route?.distanceLabel ?? formatDistance(distanceMeters);
+  }
+
+  const settlementDistanceMeters = calculateCrewSettlement(call).totalDistanceMeters;
+  return settlementDistanceMeters != null && settlementDistanceMeters > 0 ? formatDistance(settlementDistanceMeters) : "-";
 }
 
 function getLegDistanceLabel(call: CrewCall) {
@@ -636,19 +643,29 @@ function getCurrentCrewLocation() {
 }
 
 function resolveCrewProfile(calls: CrewCall[]): CrewProfileSummary {
+  const profileCall = calls.find((call) => call.crewProfile?.name);
   const ratings = calls
     .map((call) => call.crewProfile?.rating)
     .filter((rating): rating is number => typeof rating === "number" && Number.isFinite(rating) && rating > 0);
+  const name =
+    profileCall?.crewProfile?.name?.trim() ||
+    calls.find((call) => call.pickupRequest?.crewName)?.pickupRequest?.crewName?.trim() ||
+    "무함마드";
+  const photoUrl = DEFAULT_CREW_PROFILE.photoUrl;
 
   if (ratings.length > 0) {
     const averageRating = ratings.reduce((sum, rating) => sum + rating, 0) / ratings.length;
 
     return {
-      name: DEFAULT_CREW_NAME,
-      photoUrl: DEFAULT_CREW_PROFILE.photoUrl,
+      name,
+      photoUrl,
       rating: Number(averageRating.toFixed(1)),
     };
   }
 
-  return DEFAULT_CREW_PROFILE;
+  return {
+    name,
+    photoUrl,
+    rating: DEFAULT_CREW_PROFILE.rating,
+  };
 }

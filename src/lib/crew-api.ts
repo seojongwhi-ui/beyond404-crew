@@ -67,6 +67,11 @@ export type CrewCall = {
     rating: number;
     reviewSummary: string[];
   } | null;
+  crewReview?: {
+    rating: number;
+    comment: string;
+    createdAt?: string | null;
+  } | null;
   booking?: {
     bookingDate?: string | null;
     bookingTime?: string | null;
@@ -405,7 +410,7 @@ function distanceBetweenMeters(left: { lat: number; lng: number }, right: { lat:
 }
 
 export function applianceName(call: CrewCall) {
-  const model = call.appliance?.modelName ?? "LG demo model";
+  const model = call.appliance?.modelName?.trim() || "unknown";
   const type = call.appliance?.applianceType ?? "washing_machine";
 
   const label =
