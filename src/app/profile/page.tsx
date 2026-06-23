@@ -83,9 +83,7 @@ export default function CrewProfilePage() {
             <p className="mt-1 text-[11px] font-semibold leading-none text-slate-500">My Info</p>
           </div>
 
-          <span className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm">
-            <UserRound size={17} strokeWidth={2.2} />
-          </span>
+          <span aria-hidden="true" className="h-9 w-9" />
         </header>
 
         <section className="px-1 pb-1 pt-2">

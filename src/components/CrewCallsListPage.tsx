@@ -2,11 +2,15 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronRight, type LucideIcon } from "lucide-react";
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
+import { CrewRequestCard, getPickupRequestId } from "@/components/CrewRequestCard";
 import { CrewTopBar } from "@/components/CrewTopBar";
 import {
+  acceptCrewCall,
   applianceName,
+  fetchActiveCrewCalls,
   formatCallTime,
   pickupTypeLabel,
   sortCallsByLatest,
@@ -20,6 +24,8 @@ export function CrewCallsListPage({
   actionLabel,
   emptyMessage,
   fetchCalls,
+  requestActions = false,
+  showProfileButton = true,
   title,
   topSubtitle,
   toHref,
@@ -28,15 +34,21 @@ export function CrewCallsListPage({
   emptyMessage: string;
   fetchCalls: () => Promise<CrewCall[]>;
   icon: LucideIcon;
+  requestActions?: boolean;
+  showProfileButton?: boolean;
   subtitle: string;
   title: string;
   topSubtitle: string;
   toHref: (pickupRequestId: number) => string;
 }) {
+  const router = useRouter();
   const [calls, setCalls] = useState<CrewCall[]>([]);
   const [loading, setLoading] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [pullDistance, setPullDistance] = useState(0);
+  const [acceptingId, setAcceptingId] = useState<number | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<number[]>([]);
+  const [hasBlockingActiveCall, setHasBlockingActiveCall] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const touchStartYRef = useRef<number | null>(null);
 
@@ -45,8 +57,15 @@ export function CrewCallsListPage({
     setErrorMessage(null);
 
     try {
-      const nextCalls = await fetchCalls();
+      const [nextCalls, activeCalls] = await Promise.all([
+        fetchCalls(),
+        requestActions ? fetchActiveCrewCalls().catch(() => []) : Promise.resolve([]),
+      ]);
+
       setCalls(sortCallsByLatest(nextCalls));
+      if (requestActions) {
+        setHasBlockingActiveCall(activeCalls.some((call) => isActivePickupStatus(call.pickupRequest?.status)));
+      }
     } catch {
       setErrorMessage("목록을 불러오지 못했습니다. 백엔드 연결 상태를 확인해 주세요.");
     } finally {
@@ -71,6 +90,35 @@ export function CrewCallsListPage({
       setPullDistance(0);
       touchStartYRef.current = null;
     }
+  };
+
+  const visibleCalls = requestActions
+    ? calls.filter((call) => !dismissedIds.includes(getPickupRequestId(call)))
+    : calls;
+
+  const acceptFromList = async (call: CrewCall) => {
+    if (hasBlockingActiveCall) {
+      setErrorMessage("진행 중인 수거를 먼저 완료한 뒤 새 요청을 수락할 수 있어요.");
+      return;
+    }
+
+    const pickupRequestId = getPickupRequestId(call);
+    setAcceptingId(pickupRequestId);
+    setErrorMessage(null);
+
+    try {
+      const crewLocation = await getCurrentCrewLocation();
+      await acceptCrewCall(pickupRequestId, crewLocation);
+      router.push(`/calls/${pickupRequestId}/active`);
+    } catch {
+      setErrorMessage("콜을 수락하지 못했어요. 잠시 후 다시 시도해 주세요.");
+      setAcceptingId(null);
+    }
+  };
+
+  const rejectFromList = (call: CrewCall) => {
+    const pickupRequestId = getPickupRequestId(call);
+    setDismissedIds((prev) => (prev.includes(pickupRequestId) ? prev : [...prev, pickupRequestId]));
   };
 
   const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
@@ -105,7 +153,7 @@ export function CrewCallsListPage({
     <CrewPhoneShell>
       <div className="relative flex min-h-0 flex-1 flex-col bg-cloud px-4 pb-0">
         <div className="shrink-0">
-          <CrewTopBar backHref="/" subtitle={topSubtitle} />
+          <CrewTopBar backHref="/" showProfileButton={showProfileButton} subtitle={topSubtitle} />
 
           <section className="px-1 pb-1 pt-2">
             <h1 className="text-[22px] font-bold leading-tight text-ink">{title}</h1>
@@ -127,12 +175,22 @@ export function CrewCallsListPage({
           <PullRefreshIndicator isRefreshing={isRefreshing} pullDistance={pullDistance} />
 
           <div className="space-y-3">
-            {calls.length > 0 ? (
-              calls.map((call) => {
+            {visibleCalls.length > 0 ? (
+              visibleCalls.map((call) => {
                 const pickupRequestId = call.pickupRequest?.pickupRequestId;
                 if (!pickupRequestId) return null;
 
-                return (
+                return requestActions ? (
+                  <CrewRequestCard
+                    accepting={acceptingId === getPickupRequestId(call)}
+                    blocked={hasBlockingActiveCall}
+                    call={call}
+                    detailHref={toHref(pickupRequestId)}
+                    key={`${title}-${call.id}`}
+                    onAccept={() => void acceptFromList(call)}
+                    onReject={() => rejectFromList(call)}
+                  />
+                ) : (
                   <Link
                     key={`${title}-${call.id}`}
                     className="block rounded-[20px] bg-white p-4 shadow-sm"
@@ -173,6 +231,47 @@ export function CrewCallsListPage({
       </div>
     </CrewPhoneShell>
   );
+}
+
+type CrewLocationPayload = {
+  lat: number;
+  lng: number;
+  heading?: number;
+  speed?: number;
+  accuracy?: number;
+  capturedAt?: number;
+};
+
+function getCurrentCrewLocation() {
+  return new Promise<CrewLocationPayload | undefined>((resolve) => {
+    if (!("geolocation" in navigator) || !window.isSecureContext) {
+      resolve(undefined);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          heading: position.coords.heading ?? 0,
+          speed: position.coords.speed ?? 0,
+          accuracy: position.coords.accuracy,
+          capturedAt: position.timestamp,
+        });
+      },
+      () => resolve(undefined),
+      {
+        enableHighAccuracy: true,
+        maximumAge: 0,
+        timeout: 5000,
+      },
+    );
+  });
+}
+
+function isActivePickupStatus(status?: string | null) {
+  return status === "ASSIGNED" || status === "IN_PROGRESS" || status === "ARRIVED";
 }
 
 function InfoTile({ label, value }: { label: string; value: string }) {

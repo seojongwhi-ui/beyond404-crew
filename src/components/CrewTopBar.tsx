@@ -7,22 +7,24 @@ type CrewTopBarProps = {
   subtitle: string;
   backHref?: string | null;
   onRightClick?: () => void;
+  showProfileButton?: boolean;
 };
 
 export function CrewTopBar({
   backHref = null,
   onRightClick,
+  showProfileButton = true,
 }: CrewTopBarProps) {
   const router = useRouter();
 
   const handleBack = () => {
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
+    if (backHref) {
+      router.push(backHref);
       return;
     }
 
-    if (backHref) {
-      router.push(backHref);
+    if (typeof window !== "undefined" && window.history.length > 1) {
+      router.back();
       return;
     }
 
@@ -45,14 +47,18 @@ export function CrewTopBar({
         <ArrowLeft size={18} />
       </button>
 
-      <button
-        aria-label="내정보 열기"
-        className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm"
-        onClick={openProfile}
-        type="button"
-      >
-        <UserRound size={17} strokeWidth={2.2} />
-      </button>
+      {showProfileButton ? (
+        <button
+          aria-label="내정보 열기"
+          className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm"
+          onClick={openProfile}
+          type="button"
+        >
+          <UserRound size={17} strokeWidth={2.2} />
+        </button>
+      ) : (
+        <span aria-hidden="true" className="h-9 w-9" />
+      )}
     </header>
   );
 }
