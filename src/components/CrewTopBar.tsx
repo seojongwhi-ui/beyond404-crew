@@ -7,12 +7,14 @@ type CrewTopBarProps = {
   subtitle: string;
   backHref?: string | null;
   onRightClick?: () => void;
+  showBack?: boolean;
   showProfileButton?: boolean;
 };
 
 export function CrewTopBar({
   backHref = null,
   onRightClick,
+  showBack = true,
   showProfileButton = true,
 }: CrewTopBarProps) {
   const router = useRouter();
@@ -38,14 +40,18 @@ export function CrewTopBar({
 
   return (
     <header className="relative mb-3 flex items-center justify-between">
-      <button
-        aria-label="이전 화면으로 돌아가기"
-        className="flex h-9 w-9 items-center justify-center rounded-full text-ink"
-        onClick={handleBack}
-        type="button"
-      >
-        <ArrowLeft size={18} />
-      </button>
+      {showBack ? (
+        <button
+          aria-label="이전 화면으로 돌아가기"
+          className="flex h-9 w-9 items-center justify-center rounded-full text-ink"
+          onClick={handleBack}
+          type="button"
+        >
+          <ArrowLeft size={18} />
+        </button>
+      ) : (
+        <span aria-hidden="true" className="h-9 w-9" />
+      )}
 
       {showProfileButton ? (
         <button

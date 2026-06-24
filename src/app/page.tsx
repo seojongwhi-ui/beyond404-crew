@@ -3,18 +3,21 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight, Star, Truck, UserRound } from "lucide-react";
+import { Check, ChevronRight, Clock3, MapPin, PackageCheck, Star, Truck, UserRound } from "lucide-react";
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import { CrewRequestCard } from "@/components/CrewRequestCard";
 import { CrewTopBar } from "@/components/CrewTopBar";
 import {
   acceptCrewCall,
+  applianceName,
   calculateCrewSettlement,
   fetchActiveCrewCalls,
   fetchCompletedCrewCalls,
   fetchPendingCrewCalls,
+  formatCallTime,
   formatDistance,
   formatKrwAmount,
+  pickupTypeLabel,
   sortCallsByLatest,
   statusLabel,
   type CrewCall,
@@ -192,7 +195,7 @@ export default function CrewHomePage() {
   return (
     <CrewPhoneShell>
       <div className="relative flex min-h-0 flex-1 flex-col bg-cloud px-4 pb-0">
-        <CrewTopBar subtitle="Home" />
+        <CrewTopBar showBack={false} subtitle="Home" />
 
         <div
           className="phone-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pb-3"
@@ -418,7 +421,7 @@ function PriorityPendingCard({
         <div className="mt-3 rounded-[16px] bg-slate-50 px-3 py-3">
           <p className="text-[10px] font-bold text-slate-400">선택 구매 제품</p>
           <p className="mt-1 truncate text-[13px] font-bold text-ink">{call.selectedProduct.productName}</p>
-          <p className="mt-1 text-[12px] font-bold text-lgred">{formatWon(call.selectedProduct.productPrice)}</p>
+          <p className="mt-1 text-[12px] font-bold text-lgred">{formatKrwAmount(call.selectedProduct.productPrice)}</p>
         </div>
       ) : null}
 
