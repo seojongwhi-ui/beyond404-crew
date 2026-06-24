@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronRight, Clock3, MapPin, PackageCheck, Star, Truck, UserRound } from "lucide-react";
 import { CrewPhoneShell } from "@/components/CrewPhoneShell";
 import { CrewRequestCard } from "@/components/CrewRequestCard";
-import { CrewTopBar } from "@/components/CrewTopBar";
 import {
   acceptCrewCall,
   applianceName,
@@ -195,7 +194,16 @@ export default function CrewHomePage() {
   return (
     <CrewPhoneShell>
       <div className="relative flex min-h-0 flex-1 flex-col bg-cloud px-4 pb-0">
-        <CrewTopBar showBack={false} subtitle="Home" />
+        <header className="relative mb-3 flex items-center justify-end">
+          <button
+            aria-label="내정보 열기"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm"
+            onClick={() => router.push("/profile")}
+            type="button"
+          >
+            <UserRound size={17} strokeWidth={2.2} />
+          </button>
+        </header>
 
         <div
           className="phone-scroll min-h-0 flex-1 space-y-3 overflow-y-auto pb-3"
